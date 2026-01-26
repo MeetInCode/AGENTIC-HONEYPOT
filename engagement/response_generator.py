@@ -6,6 +6,7 @@ Generates believable victim responses using LLM.
 from typing import List, Optional, Dict, Any
 import json
 from groq import AsyncGroq
+from openai import AsyncOpenAI
 
 from .persona_manager import VictimPersona
 from models.schemas import Message
@@ -21,6 +22,7 @@ class ResponseGenerator:
     def __init__(self):
         self.settings = get_settings()
         self.client: Optional[AsyncGroq] = None
+        self.nvidia_client: Optional[AsyncOpenAI] = None
         self._initialized = False
     
     async def initialize(self) -> None:
@@ -29,6 +31,13 @@ class ResponseGenerator:
             return
         
         self.client = AsyncGroq(api_key=self.settings.groq_api_key)
+        
+        if self.settings.nvidia_api_key:
+            self.nvidia_client = AsyncOpenAI(
+                base_url=self.settings.nvidia_base_url,
+                api_key=self.settings.nvidia_api_key
+            )
+        
         self._initialized = True
     
     async def generate_response(
@@ -77,15 +86,33 @@ Keep response natural and concise (1-3 sentences).
 Ask questions to extract more information from the scammer."""
 
         try:
-            response = await self.client.chat.completions.create(
-                model=self.settings.groq_model_engagement,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                temperature=0.7,  # Some creativity for natural responses
-                max_tokens=150,
-            )
+            model_id = self.settings.groq_model_engagement
+            
+            # Check if this is an NVIDIA model (basic check based on common prefixes or manual list)
+            is_nvidia = "openai/" in model_id or "meta/" in model_id or "mistralai/" in model_id or "deepseek" in model_id
+            
+            if is_nvidia and self.nvidia_client:
+                # Use NVIDIA client
+                response = await self.nvidia_client.chat.completions.create(
+                    model=model_id,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    temperature=0.7,
+                    max_tokens=150,
+                )
+            else:
+                # Use Groq client
+                response = await self.client.chat.completions.create(
+                    model=model_id,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    temperature=0.7,
+                    max_tokens=150,
+                )
             
             return response.choices[0].message.content.strip()
             

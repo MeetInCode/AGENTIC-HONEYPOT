@@ -34,6 +34,9 @@ class MetaModeratorAgent(BaseDetectionAgent):
             "📜 LexJudge": 1.5,            # LLM reasoning
             "🔍 OutlierSentinel": 0.8,     # Anomaly detection
             "🧵 ContextSeer": 1.4,         # Context analysis
+            "🌪️ MistralLarge": 1.5,        # Strategic analysis
+            "🤖 DeepSeek": 1.4,            # DeepSeek classification
+            "🤖 GPT-120B": 1.6,            # General intelligence (GPT-120B)
         }
         
         # Minimum votes required to declare scam

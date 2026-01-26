@@ -29,38 +29,45 @@ class ChannelType(str, Enum):
 
 class Message(BaseModel):
     """Represents a single message in the conversation."""
-    sender: SenderType
+    sender: str = "scammer"
     text: str
-    timestamp: datetime
+    timestamp: Optional[datetime] = Field(default_factory=datetime.utcnow)
     
     class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
+        json_encoders = {datetime: lambda v: v.isoformat()}
+        populate_by_name = True
+        extra = 'ignore'
 
 
 class Metadata(BaseModel):
     """Optional metadata about the conversation context."""
-    channel: Optional[ChannelType] = ChannelType.SMS
+    channel: Optional[str] = "SMS"
     language: Optional[str] = "English"
     locale: Optional[str] = "IN"
+
+    class Config:
+        populate_by_name = True
+        extra = 'ignore'
 
 
 class HoneypotRequest(BaseModel):
     """
     API request model for incoming messages.
-    Matches the GUVI evaluation platform specification.
     """
-    sessionId: str = Field(..., description="Unique session identifier")
-    message: Message = Field(..., description="Latest incoming message")
+    sessionId: str = Field(..., alias="session_id")
+    message: Message = Field(..., alias="msg")
     conversationHistory: List[Message] = Field(
         default_factory=list,
-        description="Previous messages in the conversation"
+        alias="history"
     )
     metadata: Optional[Metadata] = Field(
         default_factory=Metadata,
         description="Optional context metadata"
     )
+
+    class Config:
+        populate_by_name = True
+        extra = 'ignore'
 
 
 # ==========================================

@@ -115,7 +115,7 @@ class TestDetectionCouncil:
         await council.initialize()
         
         assert council._initialized is True
-        assert len(council.agents) == 6
+        assert len(council.agents) == 9
     
     @pytest.mark.asyncio
     async def test_council_analysis(self):

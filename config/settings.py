@@ -22,7 +22,7 @@ class Settings(BaseSettings):
         env="GROQ_MODEL_DETECTION"
     )
     groq_model_engagement: str = Field(
-        default="mixtral-8x7b-32768", 
+        default="openai/gpt-oss-120b", 
         env="GROQ_MODEL_ENGAGEMENT"
     )
     groq_model_summarizer: str = Field(
@@ -35,6 +35,18 @@ class Settings(BaseSettings):
     nvidia_base_url: str = Field(
         default="https://integrate.api.nvidia.com/v1",
         env="NVIDIA_BASE_URL"
+    )
+    nvidia_model_mistral: str = Field(
+        default="mistralai/mistral-large-3-675b-instruct-2512",
+        env="NVIDIA_MODEL_MISTRAL"
+    )
+    nvidia_model_deepseek: str = Field(
+        default="deepseek-ai/deepseek-v3.1",
+        env="NVIDIA_MODEL_DEEPSEEK"
+    )
+    nvidia_model_general: str = Field(
+        default="openai/gpt-oss-120b",
+        env="NVIDIA_MODEL_GENERAL"
     )
     
     # GUVI Callback Configuration

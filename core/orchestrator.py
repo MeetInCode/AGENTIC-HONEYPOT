@@ -101,7 +101,7 @@ class HoneypotOrchestrator:
         metadata = None
         if request.metadata:
             metadata = {
-                "channel": request.metadata.channel.value if request.metadata.channel else "SMS",
+                "channel": request.metadata.channel if request.metadata.channel else "SMS",
                 "language": request.metadata.language or "English",
                 "locale": request.metadata.locale or "IN"
             }

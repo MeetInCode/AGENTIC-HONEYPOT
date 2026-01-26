@@ -17,7 +17,7 @@ console = Console()
 
 # Configuration
 BASE_URL = "http://localhost:8000"
-API_KEY = "your-secret-api-key-here"  # Match with .env
+API_KEY = "hp_live_9fA3kLQxP2Z8R7sM1"  # Match with .env
 
 
 class HoneypotTester:

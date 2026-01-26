@@ -16,6 +16,7 @@ from .lex_judge import LexJudgeAgent
 from .outlier_sentinel import OutlierSentinelAgent
 from .context_seer import ContextSeerAgent
 from .meta_moderator import MetaModeratorAgent
+from .nvidia_agents import NvidiaMistralAgent, NvidiaDeepSeekAgent, NvidiaGeneralAgent
 from models.schemas import Message, CouncilVote, CouncilVerdict
 
 
@@ -38,6 +39,9 @@ class DetectionCouncil:
             LexJudgeAgent(),
             OutlierSentinelAgent(),
             ContextSeerAgent(),
+            NvidiaMistralAgent(),
+            NvidiaDeepSeekAgent(),
+            NvidiaGeneralAgent(),
         ]
         self.meta_moderator = MetaModeratorAgent()
         self._initialized = False

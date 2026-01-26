@@ -277,9 +277,8 @@ class EngagementGraph:
         )
         
         # Run the graph
-        result = await asyncio.to_thread(
-            lambda: self.graph.invoke(initial_state)
-        )
+        # Run the graph
+        result = await self.graph.ainvoke(initial_state)
         
         return {
             "response": result.get("last_response", ""),
