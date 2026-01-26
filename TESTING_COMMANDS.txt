@@ -1,0 +1,243 @@
+# ============================================
+# AGENTIC HONEYPOT - COMPLETE TESTING GUIDE
+# ============================================
+# This file contains ALL commands needed to
+# set up, run, and test the Agentic Honeypot.
+# ============================================
+
+# ============================================
+# QUICK START (Run these in order)
+# ============================================
+
+# 1. Navigate to project directory
+cd agentic_honeypot
+
+# 2. Create virtual environment
+python -m venv venv
+
+# 3. Activate virtual environment
+# Windows PowerShell:
+.\venv\Scripts\Activate.ps1
+# Windows CMD:
+# venv\Scripts\activate.bat
+# Linux/Mac:
+# source venv/bin/activate
+
+# 4. Install dependencies
+pip install -r requirements.txt
+
+# 5. (Optional) Download spaCy model for NER
+python -m spacy download en_core_web_sm
+
+# 6. Configure environment
+# Edit .env file and set:
+#   - API_SECRET_KEY=your-secret-key
+#   - GROQ_API_KEY=your-groq-api-key (get from console.groq.com)
+
+# 7. Run demo to test Detection Council (no server needed)
+python demo.py
+
+# 8. Start API server
+python main.py
+
+# 9. In a NEW terminal, run API tests
+python tests/test_api.py
+
+
+# ============================================
+# INDIVIDUAL COMMAND REFERENCE
+# ============================================
+
+# --- SERVER COMMANDS ---
+
+# Start development server with auto-reload
+python main.py
+
+# Start with uvicorn (more control)
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+# Production mode (no reload, multiple workers)
+uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
+
+# --- TEST COMMANDS ---
+
+# Quick demo (no server needed)
+python demo.py
+
+# API integration tests (requires server running)
+python tests/test_api.py
+
+# Unit tests with pytest
+pytest tests/test_agents.py -v
+
+# All tests
+pytest tests/ -v
+
+# Tests with coverage
+pytest tests/ -v --cov=. --cov-report=html
+
+# --- UTILITY COMMANDS ---
+
+# Generate sample training data
+python scripts/generate_sample_data.py
+
+# Lint code
+black . --check
+isort . --check
+
+# Format code
+black .
+isort .
+
+# --- API TESTING WITH CURL ---
+
+# Health check
+curl -X GET "http://localhost:8000/health"
+
+# Analyze scam message
+curl -X POST "http://localhost:8000/api/v1/analyze" \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: your-secret-api-key-here" \
+  -d '{
+    "sessionId": "test-001",
+    "message": {
+      "sender": "scammer",
+      "text": "Your SBI account will be blocked. Share OTP immediately.",
+      "timestamp": "2024-01-26T10:00:00Z"
+    },
+    "conversationHistory": [],
+    "metadata": {
+      "channel": "SMS",
+      "language": "English",
+      "locale": "IN"
+    }
+  }'
+
+# List active sessions
+curl -X GET "http://localhost:8000/api/v1/sessions" \
+  -H "x-api-key: your-secret-api-key-here"
+
+# Get session details
+curl -X GET "http://localhost:8000/api/v1/session/test-001" \
+  -H "x-api-key: your-secret-api-key-here"
+
+# Force callback for a session
+curl -X POST "http://localhost:8000/api/v1/callback/test-001" \
+  -H "x-api-key: your-secret-api-key-here"
+
+
+# ============================================
+# POWERSHELL API TESTING
+# ============================================
+
+# Health check
+Invoke-RestMethod -Uri "http://localhost:8000/health" -Method Get
+
+# Analyze message
+$headers = @{
+    "x-api-key" = "your-secret-api-key-here"
+    "Content-Type" = "application/json"
+}
+
+$body = @{
+    sessionId = "ps-test-001"
+    message = @{
+        sender = "scammer"
+        text = "Your account blocked. Share OTP now."
+        timestamp = "2024-01-26T10:00:00Z"
+    }
+    conversationHistory = @()
+    metadata = @{
+        channel = "SMS"
+        language = "English"
+        locale = "IN"
+    }
+} | ConvertTo-Json -Depth 5
+
+$response = Invoke-RestMethod -Uri "http://localhost:8000/api/v1/analyze" -Method Post -Headers $headers -Body $body
+$response | ConvertTo-Json -Depth 10
+
+
+# ============================================
+# SAMPLE SCAM MESSAGES FOR TESTING
+# ============================================
+
+# Bank Block Scam
+# "Your SBI account will be blocked today. Verify immediately at http://sbi-verify.xyz"
+
+# UPI Fraud
+# "URGENT: Your UPI ID suspended. Share OTP to verify: verify@upi"
+
+# Lottery Scam
+# "Congratulations! You won Rs 50000 in Jio Lucky Draw. Call +91-9876543210 to claim."
+
+# KYC Scam
+# "Your Paytm wallet will be blocked in 24 hours. Complete KYC at bit.ly/paytm-kyc"
+
+# Impersonation
+# "This is Cyber Crime Police. A case registered against your Aadhar. Call immediately."
+
+# Legitimate Messages (should NOT be flagged)
+# "Hi, let's meet for coffee tomorrow at 3 PM."
+# "Your Amazon order has shipped. Track at amazon.in"
+# "Thank you for attending the meeting. Notes attached."
+
+
+# ============================================
+# EXPECTED OUTPUT STRUCTURE
+# ============================================
+
+# Successful scam detection response:
+# {
+#   "status": "success",
+#   "scamDetected": true,
+#   "agentResponse": "What should I do? Which bank are you from?",
+#   "engagementMetrics": {
+#     "engagementDurationSeconds": 30,
+#     "totalMessagesExchanged": 1
+#   },
+#   "extractedIntelligence": {
+#     "bankAccounts": [],
+#     "upiIds": ["verify@upi"],
+#     "phishingLinks": ["http://sbi-verify.xyz"],
+#     "phoneNumbers": ["+919876543210"],
+#     "suspiciousKeywords": ["urgent", "blocked", "verify", "otp"]
+#   },
+#   "agentNotes": "Scam confirmed with 92% confidence.",
+#   "councilVerdict": {
+#     "is_scam": true,
+#     "confidence": 0.92,
+#     "votes": [...],
+#     "justification": "...",
+#     "vote_breakdown": "..."
+#   }
+# }
+
+
+# ============================================
+# TROUBLESHOOTING
+# ============================================
+
+# Issue: "Module not found" errors
+# Solution: Make sure virtual environment is activated and run from project root
+
+# Issue: Groq API errors
+# Solution: Check GROQ_API_KEY in .env file, get key from console.groq.com
+
+# Issue: Server won't start
+# Solution: Check port 8000 is not in use, try different port with --port 8001
+
+# Issue: Tests fail with connection error
+# Solution: Make sure API server is running in another terminal
+
+# Issue: Low detection accuracy
+# Solution: Lower SCAM_CONFIDENCE_THRESHOLD in .env (default: 0.6)
+
+
+# ============================================
+# API DOCUMENTATION
+# ============================================
+
+# Swagger UI: http://localhost:8000/docs
+# ReDoc: http://localhost:8000/redoc
+# OpenAPI JSON: http://localhost:8000/openapi.json
