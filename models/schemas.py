@@ -176,6 +176,7 @@ class SessionState(BaseModel):
     council_verdict: Optional[CouncilVerdict] = None
     agent_notes: str = ""
     callback_sent: bool = False
+    callback_response_log: Optional[str] = None
     
     def get_duration_seconds(self) -> int:
         """Calculate engagement duration in seconds."""

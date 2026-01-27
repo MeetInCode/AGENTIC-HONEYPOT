@@ -3,6 +3,7 @@ Honeypot Orchestrator
 Main orchestration logic that ties together detection, engagement, and extraction.
 """
 
+import asyncio
 from typing import Optional
 from datetime import datetime
 from rich.console import Console
@@ -60,11 +61,10 @@ class HoneypotOrchestrator:
         Process an incoming message through the honeypot pipeline.
         
         Flow:
-        1. Get/create session
-        2. Run Detection Council
-        3. If scam detected, engage with LangGraph agent
-        4. Extract intelligence
-        5. Update session and potentially send callback
+        1. Run Detection (Awaited) to determine scam status.
+        2. If scam, Run Engagement (Awaited) to get response.
+        3. Return Response immediately (Low Latency).
+        4. Run Extraction and Callback logic in BACKGROUND.
         
         Args:
             request: The incoming message request
@@ -97,7 +97,7 @@ class HoneypotOrchestrator:
             message=incoming_message
         )
         
-        # Prepare metadata
+        # Prepare metadata for detection
         metadata = None
         if request.metadata:
             metadata = {
@@ -106,7 +106,7 @@ class HoneypotOrchestrator:
                 "locale": request.metadata.locale or "IN"
             }
         
-        # Step 1: Run Detection Council (always analyze, even if previously detected)
+        # Step 1: Run Detection Council (AWAITED - Critical Path)
         verdict = await self.detection_council.analyze(
             message=request.message.text,
             conversation_history=history,
@@ -120,27 +120,16 @@ class HoneypotOrchestrator:
             verdict=verdict
         )
         
-        # Step 2: Extract intelligence from current message
-        new_intel = await self.intelligence_extractor.extract(
-            message=request.message.text,
-            conversation_history=history
-        )
-        
-        self.session_manager.update_session(
-            session_id=session_id,
-            intelligence=new_intel
-        )
-        
-        # Get updated session
-        session = self.session_manager.get_session(session_id)
-        
-        # Step 3: If scam detected, engage with agent
+        # Step 2: If scam detected, engage with agent (AWAITED - Needed for Response)
         agent_response = None
         if verdict.is_scam:
             console.print("[bold red]🚨 Scam detected! Activating engagement agent...[/bold red]")
             
-            # Determine scam type from verdict
+            # Determine scam type
             scam_type = self._determine_scam_type(verdict)
+            
+            # Get existing intel (from previous turns only since extraction is now background)
+            existing_intel = session.extracted_intelligence
             
             # Generate engagement response
             engagement_result = await self.engagement_graph.engage(
@@ -148,7 +137,7 @@ class HoneypotOrchestrator:
                 scammer_message=request.message.text,
                 conversation_history=history,
                 scam_type=scam_type,
-                existing_intel=session.extracted_intelligence
+                existing_intel=existing_intel
             )
             
             agent_response = engagement_result.get("response", "")
@@ -161,16 +150,21 @@ class HoneypotOrchestrator:
             
             console.print(f"[bold green]💬 Agent response:[/bold green] {agent_response}")
         
-        # Get final session state
+        # Step 3: Spawn Background Tasks (Extraction + Callback)
+        # This moves the heavy extraction and callback Logic off the critical path
+        asyncio.create_task(self._run_background_tasks(
+            session_id=session_id,
+            message_text=request.message.text,
+            history=history,
+            is_scam=verdict.is_scam
+        ))
+        
+        # Step 4: Return Response Immediately
+        # Note: extractedIntelligence in response might be slightly stale (pre-extraction update)
+        # unless we want to wait. For "immediately send response", we return what we have.
+        # But to be safe, we return the session's current intel.
         session = self.session_manager.get_session(session_id)
         
-        # Step 4: Check if we should send callback
-        should_callback = await self._should_send_callback(session, verdict.is_scam)
-        
-        if should_callback:
-            await self._send_callback(session)
-        
-        # Build response
         response = HoneypotResponse(
             status="success",
             scamDetected=verdict.is_scam,
@@ -181,10 +175,45 @@ class HoneypotOrchestrator:
             ),
             extractedIntelligence=session.extracted_intelligence,
             agentNotes=self._generate_agent_notes(session, verdict),
-            councilVerdict=verdict
+            councilVerdict=None
         )
         
         return response
+    
+    async def _run_background_tasks(
+        self, 
+        session_id: str, 
+        message_text: str, 
+        history: list,
+        is_scam: bool
+    ):
+        """
+        Run heavy tasks in background: Intelligence Extraction & Callback.
+        """
+        try:
+            # 1. Run Intelligence Extraction
+            new_intel = await self.intelligence_extractor.extract(
+                message=message_text,
+                conversation_history=history
+            )
+            
+            # 2. Update Session
+            self.session_manager.update_session(
+                session_id=session_id,
+                intelligence=new_intel
+            )
+            
+            # 3. Check & Send Callback
+            session = self.session_manager.get_session(session_id)
+            should_callback = await self._should_send_callback(session, is_scam)
+            
+            if should_callback:
+                console.print(f"[dim]Initiating background callback for {session_id}...[/dim]")
+                await self._send_callback(session)
+                
+        except Exception as e:
+            console.print(f"[bold red]❌ Background task error: {e}[/bold red]")
+
     
     def _determine_scam_type(self, verdict) -> str:
         """Determine scam type from verdict features."""
@@ -272,7 +301,7 @@ class HoneypotOrchestrator:
     async def _send_callback(self, session) -> None:
         """Send the final callback to GUVI."""
         try:
-            success = await self.callback_service.send_final_result(
+            success, response_log = await self.callback_service.send_final_result(
                 session_id=session.session_id,
                 scam_detected=session.is_scam_detected,
                 total_messages=session.total_messages,
@@ -280,11 +309,14 @@ class HoneypotOrchestrator:
                 agent_notes=session.agent_notes or "Engagement completed."
             )
             
-            if success:
-                self.session_manager.update_session(
-                    session_id=session.session_id,
-                    callback_sent=True
-                )
+            updates = {
+                "callback_sent": success,
+                "callback_response_log": response_log
+            }
+            self.session_manager.update_session(
+                session_id=session.session_id,
+                **updates
+            )
         except Exception as e:
             console.print(f"[bold red]❌ Callback failed: {e}[/bold red]")
     

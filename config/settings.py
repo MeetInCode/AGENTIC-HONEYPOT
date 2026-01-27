@@ -41,7 +41,7 @@ class Settings(BaseSettings):
         env="NVIDIA_MODEL_MISTRAL"
     )
     nvidia_model_deepseek: str = Field(
-        default="deepseek-ai/deepseek-v3.1",
+        default="deepseek-ai/deepseek-r1-distill-qwen-7b",
         env="NVIDIA_MODEL_DEEPSEEK"
     )
     nvidia_model_general: str = Field(

@@ -43,7 +43,7 @@ class CallbackService:
         total_messages: int,
         intelligence: ExtractedIntelligence,
         agent_notes: str
-    ) -> bool:
+    ) -> tuple[bool, str]:
         """
         Send the final result to GUVI evaluation endpoint.
         
@@ -88,13 +88,13 @@ class CallbackService:
             
             if response.status_code in [200, 201, 202]:
                 console.print(f"[bold green]✅ Callback successful![/bold green]")
-                return True
+                return True, f"Success ({response.status_code}): {response.text}"
             else:
                 console.print(
                     f"[bold red]❌ Callback failed: {response.status_code}[/bold red]"
                 )
                 console.print(f"   Response: {response.text[:200]}")
-                return False
+                return False, f"Failed ({response.status_code}): {response.text[:200]}"
                 
         except httpx.TimeoutException:
             console.print("[bold red]❌ Callback timeout[/bold red]")

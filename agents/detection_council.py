@@ -4,6 +4,7 @@ Orchestrates all detection agents and produces final verdicts.
 """
 
 import asyncio
+import time
 from typing import List, Optional
 from rich.console import Console
 from rich.table import Table
@@ -11,7 +12,7 @@ from rich.table import Table
 from .base_agent import BaseDetectionAgent
 from .rule_guard import RuleGuardAgent
 from .fast_ml import FastMLAgent
-from .bert_lite import BertLiteAgent
+# from .bert_lite import BertLiteAgent
 from .lex_judge import LexJudgeAgent
 from .outlier_sentinel import OutlierSentinelAgent
 from .context_seer import ContextSeerAgent
@@ -35,12 +36,12 @@ class DetectionCouncil:
         self.agents: List[BaseDetectionAgent] = [
             RuleGuardAgent(),
             FastMLAgent(),
-            BertLiteAgent(),
+            # BertLiteAgent(),
             LexJudgeAgent(),
             OutlierSentinelAgent(),
             ContextSeerAgent(),
-            NvidiaMistralAgent(),
-            NvidiaDeepSeekAgent(),
+            # NvidiaMistralAgent(),
+            # NvidiaDeepSeekAgent(),
             NvidiaGeneralAgent(),
         ]
         self.meta_moderator = MetaModeratorAgent()
@@ -62,6 +63,22 @@ class DetectionCouncil:
         self._initialized = True
         console.print("[bold green]✅ Detection Council ready![/bold green]")
     
+    async def _timed_analyze(self, agent, message, history, metadata):
+        """Analyze with timing."""
+        start_time = time.perf_counter()
+        try:
+            result = await agent.analyze(message, history, metadata)
+            elapsed = time.perf_counter() - start_time
+            # Store duration in result if possible or just log it
+            # We will log it here for immediate visibility
+            color = "green" if elapsed < 1.0 else "yellow" if elapsed < 3.0 else "red"
+            console.print(f"  [{color}]⏱️ {agent.name}: {elapsed:.4f}s[/{color}]")
+            return result
+        except Exception as e:
+            elapsed = time.perf_counter() - start_time
+            console.print(f"[bold red]  ⏱️ {agent.name} FAILED after {elapsed:.4f}s: {e}[/bold red]")
+            return e
+
     async def analyze(
         self,
         message: str,
@@ -83,10 +100,11 @@ class DetectionCouncil:
             await self.initialize()
         
         console.print(f"\n[bold yellow]🔍 Analyzing message:[/bold yellow] {message[:100]}...")
+        console.print("[bold]Agent Response Times:[/bold]")
         
-        # Collect votes from all agents in parallel
+        # Collect votes from all agents in parallel with timing
         vote_tasks = [
-            agent.analyze(message, conversation_history, metadata)
+            self._timed_analyze(agent, message, conversation_history, metadata)
             for agent in self.agents
         ]
         
@@ -101,12 +119,12 @@ class DetectionCouncil:
             if isinstance(vote, CouncilVote)
         ]
         
-        # Log any failed votes
-        for i, result in enumerate(votes):
-            if isinstance(result, Exception):
-                console.print(
-                    f"[red]⚠️ {self.agents[i].name} failed: {result}[/red]"
-                )
+        # Log any failed votes (already logged in timed_analyze but good for summary)
+        # for i, result in enumerate(votes):
+        #     if isinstance(result, Exception):
+        #         console.print(
+        #             f"[red]⚠️ {self.agents[i].name} failed: {result}[/red]"
+        #         )
         
         # Get final verdict from meta-moderator
         verdict = await self.meta_moderator.aggregate_votes(valid_votes)

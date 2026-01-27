@@ -86,7 +86,13 @@ Keep response natural and concise (1-3 sentences).
 Ask questions to extract more information from the scammer."""
 
         try:
-            model_id = self.settings.groq_model_engagement
+            # User request: Use "mistrallarge strategicLLM" (Nvidia Mistral) for engagement
+            if self.nvidia_client:
+                # Use Nvidia Mistral for "StrategicLLM" engagement
+                model_id = self.settings.nvidia_model_mistral
+            else:
+                # Fallback to Groq if Nvidia not configured
+                model_id = self.settings.groq_model_engagement
             
             # Check if this is an NVIDIA model (basic check based on common prefixes or manual list)
             is_nvidia = "openai/" in model_id or "meta/" in model_id or "mistralai/" in model_id or "deepseek" in model_id
@@ -127,7 +133,7 @@ Ask questions to extract more information from the scammer."""
         
         lines = []
         for msg in history[-8:]:  # Last 8 messages
-            role = "SCAMMER" if msg.sender.value == "scammer" else "YOU (victim)"
+            role = "SCAMMER" if msg.sender == "scammer" else "YOU (victim)"
             lines.append(f"{role}: {msg.text}")
         
         return "\n".join(lines)

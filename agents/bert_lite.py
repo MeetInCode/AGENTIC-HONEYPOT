@@ -6,7 +6,7 @@ Uses HuggingFace transformers for neural classification.
 
 from typing import List, Optional
 import torch
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
+from transformers import AutoTokenizer, AutoModelForSequenceClassification # type: ignore
 import numpy as np
 
 from .base_agent import BaseDetectionAgent

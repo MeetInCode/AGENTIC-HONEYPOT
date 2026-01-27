@@ -91,7 +91,9 @@ class SessionManager:
         intelligence: Optional[ExtractedIntelligence] = None,
         verdict: Optional[CouncilVerdict] = None,
         agent_note: Optional[str] = None,
-        callback_sent: Optional[bool] = None
+        callback_sent: Optional[bool] = None,
+        callback_response_log: Optional[str] = None,
+        **kwargs
     ) -> SessionState:
         """
         Update an existing session with new data.
@@ -131,6 +133,14 @@ class SessionManager:
         
         if callback_sent is not None:
             session.callback_sent = callback_sent
+            
+        if callback_response_log:
+            session.callback_response_log = callback_response_log
+            
+        # Update any other field from kwargs if they exist in SessionState
+        for key, value in kwargs.items():
+            if hasattr(session, key):
+                setattr(session, key, value)
         
         session.last_activity = datetime.utcnow()
         return session

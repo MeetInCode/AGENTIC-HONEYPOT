@@ -115,7 +115,7 @@ class IntelligenceExtractor:
         all_text = message
         if conversation_history:
             for msg in conversation_history:
-                if msg.sender.value == "scammer":
+                if msg.sender == "scammer":
                     all_text += " " + msg.text
         
         # Run all extraction methods

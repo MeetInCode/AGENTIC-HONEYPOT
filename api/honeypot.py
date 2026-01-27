@@ -184,6 +184,7 @@ async def get_session(
         "total_messages": session.total_messages,
         "duration_seconds": session.get_duration_seconds(),
         "callback_sent": session.callback_sent,
+        "callback_response_log": session.callback_response_log,
         "extracted_intelligence": session.extracted_intelligence.model_dump(),
         "agent_notes": session.agent_notes
     }
