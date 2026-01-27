@@ -35,21 +35,64 @@ class SessionManager:
         Returns:
             SessionState if found, None otherwise
         """
+        session.last_activity = datetime.utcnow()
+        self._save_session(session)
+        return session
+    
+    def _get_storage_path(self, session_id: str) -> str:
+        """Get the file path for session storage."""
+        import os
+        storage_dir = "session_data"
+        if not os.path.exists(storage_dir):
+            os.makedirs(storage_dir)
+        return os.path.join(storage_dir, f"{session_id}.json")
+
+    def _save_session(self, session: SessionState) -> None:
+        """Persist session to disk."""
+        import json
+        try:
+            path = self._get_storage_path(session.session_id)
+            with open(path, 'w') as f:
+                f.write(session.model_dump_json())
+        except Exception as e:
+            console.print(f"[bold red]❌ Failed to save session {session.session_id}: {e}[/bold red]")
+
+    def _load_session_from_disk(self, session_id: str) -> Optional[SessionState]:
+        """Load session from disk if exists."""
+        import json
+        import os
+        try:
+            path = self._get_storage_path(session_id)
+            if os.path.exists(path):
+                with open(path, 'r') as f:
+                    data = json.load(f)
+                    # Handle datetime deserialization if needed, but pydantic should handle standard types
+                    # We might need to parse datetime strings manually if simple json load doesn't work for Pydantic init associated with simpler types
+                    # Actually, Pydantic's model_validate_json is better
+                    return SessionState.model_validate(data)
+        except Exception as e:
+            console.print(f"[bold red]❌ Failed to load session {session_id}: {e}[/bold red]")
+        return None
+
+    def get_session(self, session_id: str) -> Optional[SessionState]:
+        """
+        Get an existing session by ID, checking memory then disk.
+        """
         session = self._sessions.get(session_id)
+        if not session:
+            session = self._load_session_from_disk(session_id)
+            if session:
+                self._sessions[session_id] = session
+        
         if session:
             # Update last activity
             session.last_activity = datetime.utcnow()
+            # self._save_session(session) # Optional: don't save on every read to save IO
         return session
     
     def create_session(self, session_id: str) -> SessionState:
         """
         Create a new session.
-        
-        Args:
-            session_id: The session identifier
-            
-        Returns:
-            New SessionState
         """
         session = SessionState(
             session_id=session_id,
@@ -65,18 +108,13 @@ class SessionManager:
             callback_sent=False
         )
         self._sessions[session_id] = session
+        self._save_session(session)
         console.print(f"[bold blue]📝 Created new session: {session_id}[/bold blue]")
         return session
-    
+
     def get_or_create_session(self, session_id: str) -> SessionState:
         """
         Get existing session or create new one.
-        
-        Args:
-            session_id: The session identifier
-            
-        Returns:
-            SessionState
         """
         session = self.get_session(session_id)
         if session is None:
@@ -96,19 +134,7 @@ class SessionManager:
         **kwargs
     ) -> SessionState:
         """
-        Update an existing session with new data.
-        
-        Args:
-            session_id: The session identifier
-            message: New message to add to history
-            is_scam: Update scam detection status
-            intelligence: New intelligence to merge
-            verdict: Council verdict to store
-            agent_note: Note to append to agent notes
-            callback_sent: Update callback status
-            
-        Returns:
-            Updated SessionState
+        Update an existing session with new data and persist it.
         """
         session = self.get_or_create_session(session_id)
         
@@ -143,6 +169,7 @@ class SessionManager:
                 setattr(session, key, value)
         
         session.last_activity = datetime.utcnow()
+        self._save_session(session)
         return session
     
     def delete_session(self, session_id: str) -> bool:

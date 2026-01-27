@@ -138,10 +138,11 @@ def main():
     """Run the application."""
     settings = get_settings()
     
+    port = int(os.getenv("PORT", 8000))
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
-        port=8000,
+        port=port,
         reload=settings.debug,
         log_level=settings.log_level.lower(),
     )
