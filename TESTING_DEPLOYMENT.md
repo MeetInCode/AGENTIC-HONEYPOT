@@ -29,7 +29,9 @@ This project is now configured for Railway deployment.
 2. Login to [Railway](https://railway.com/).
 3. Click "New Project" -> "Deploy from GitHub repo".
 4. Select your repository.
-5. Railway will detect the `Procfile` and `requirements.txt`.
+5. Railway will detect the `Dockerfile` and build using it.
+   - We added a custom `Dockerfile` to optimize the build (using CPU-only PyTorch).
+   - We also added `.dockerignore` to fix the "Build timed out" / slow upload issue.
 6. **Environment Variables**: You MUST set these in Railway Settings:
    - `GROQ_API_KEY`: Your Groq API key
    - `API_SECRET_KEY`: Your chosen secret key (e.g. "honeypot-secret-123")
