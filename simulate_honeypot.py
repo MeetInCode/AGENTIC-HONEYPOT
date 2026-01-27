@@ -13,7 +13,7 @@ load_dotenv()
 # ⚙️ CONFIGURATION (Change these)
 # ==========================================
 # Use ngrok if provided, or set your ngrok URL here
-ENDPOINT_URL = "https://9c58165427a6.ngrok-free.app/api/v1/analyze" 
+ENDPOINT_URL = "https://web-production-f5c68.up.railway.app/api/v1/analyze" 
 API_KEY = "hp_live_9fA3kLQxP2Z8R7sM1"
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 # ==========================================
@@ -107,7 +107,13 @@ class HoneypotSimulation:
         response = requests.post(self.endpoint, json=payload, headers=headers)
         latency = time.time() - start_time
         
-        return response.json(), latency
+        try:
+            return response.json(), latency
+        except json.JSONDecodeError:
+            print(f"\n{Colors.WARNING}❌ Failed to decode JSON response from API.{Colors.ENDC}")
+            print(f"Status Code: {response.status_code}")
+            print(f"Raw Response: {response.text}")
+            raise
 
     def check_callback_status(self):
         """Checks if the server-side callback was triggered."""

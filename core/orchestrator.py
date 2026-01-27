@@ -175,7 +175,7 @@ class HoneypotOrchestrator:
             ),
             extractedIntelligence=session.extracted_intelligence,
             agentNotes=self._generate_agent_notes(session, verdict),
-            councilVerdict=None
+            councilVerdict=verdict
         )
         
         return response
