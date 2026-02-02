@@ -9,11 +9,12 @@ from dotenv import load_dotenv
 # Load .env
 load_dotenv()
 
+
 # ==========================================
 # ⚙️ CONFIGURATION
 # ==========================================
-ENDPOINT_URL = "https://web-production-f5c68.up.railway.app/api/v1/analyze"  # Ensure this matches your deployment
-API_KEY = "hp_live_9fA3kLQxP2Z8R7sM1"     # Ensure this matches your deployment
+ENDPOINT_URL = "http://localhost:8000/api/v1/analyze"
+API_KEY = "hp_live_9fA3kLQxP2Z8R7sM1"
 
 class Colors:
     HEADER = '\033[95m'

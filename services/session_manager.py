@@ -52,7 +52,7 @@ class SessionManager:
         import json
         try:
             path = self._get_storage_path(session.session_id)
-            with open(path, 'w') as f:
+            with open(path, 'w', encoding='utf-8') as f:
                 f.write(session.model_dump_json())
         except Exception as e:
             console.print(f"[bold red]❌ Failed to save session {session.session_id}: {e}[/bold red]")
@@ -64,7 +64,7 @@ class SessionManager:
         try:
             path = self._get_storage_path(session_id)
             if os.path.exists(path):
-                with open(path, 'r') as f:
+                with open(path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                     # Handle datetime deserialization if needed, but pydantic should handle standard types
                     # We might need to parse datetime strings manually if simple json load doesn't work for Pydantic init associated with simpler types
