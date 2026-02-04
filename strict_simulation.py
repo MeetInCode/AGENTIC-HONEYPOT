@@ -13,8 +13,8 @@ load_dotenv()
 # ==========================================
 # ⚙️ CONFIGURATION
 # ==========================================
-ENDPOINT_URL = "http://localhost:8000/api/v1/analyze"
-API_KEY = "hp_live_9fA3kLQxP2Z8R7sM1"
+ENDPOINT_URL = "https://web-production-f5c68.up.railway.app/api/v1/analyze"  # Ensure this matches your deployment
+API_KEY = "hp_live_9fA3kLQxP2Z8R7sM1"     # Ensure this matches your deployment
 
 class Colors:
     HEADER = '\033[95m'
@@ -33,32 +33,18 @@ def print_section(title):
 
 def validate_response_schema(data):
     """
-    Validates the API response against the schema in Section 8.
+    Validates the API response against the new simplified schema.
+    Expected: {"status": "success", "reply": "..."}
     """
-    required_keys = [
-        "status", 
-        "scamDetected", 
-        "engagementMetrics", 
-        "extractedIntelligence", 
-        "agentNotes"
-    ]
+    required_keys = ["status", "reply"]
     
     missing = [k for k in required_keys if k not in data]
     
     if missing:
         print(f"{Colors.FAIL}❌ Schema Validation Failed! Missing keys: {missing}{Colors.ENDC}")
         return False
-    
-    # Validate nested objects
-    if not isinstance(data.get("engagementMetrics"), dict):
-        print(f"{Colors.FAIL}❌ Schema Validation Failed! 'engagementMetrics' should be a dict.{Colors.ENDC}")
-        return False
-
-    if not isinstance(data.get("extractedIntelligence"), dict):
-        print(f"{Colors.FAIL}❌ Schema Validation Failed! 'extractedIntelligence' should be a dict.{Colors.ENDC}")
-        return False
-
-    print(f"{Colors.OKGREEN}✅ Response Schema Validated{Colors.ENDC}")
+        
+    print(f"{Colors.OKGREEN}✅ Response Schema Validated (Simplified Format){Colors.ENDC}")
     return True
 
 def run_simulation():
@@ -122,7 +108,7 @@ def run_simulation():
         # or it's wrapped inside execution. 
         # I will check for 'agentResponse' dynamically.
         
-        agent_reply = data_1.get("agentResponse") or data_1.get("message", {}).get("text") or "Hello?"
+        agent_reply = data_1.get("reply") or "Hello?"
         
         print(f"{Colors.AGENT}Agent Reply used for history: {agent_reply}{Colors.ENDC}")
         
@@ -173,10 +159,10 @@ def run_simulation():
         
         validate_response_schema(data_2)
         
-        if data_2.get("scamDetected"):
-            print(f"{Colors.OKGREEN}✅ Scam successfully detected!{Colors.ENDC}")
+        if data_2.get("reply"):
+            print(f"{Colors.OKGREEN}✅ Received Agent Reply (Implicit Scam Detection){Colors.ENDC}")
         else:
-            print(f"{Colors.WARNING}⚠️ Scam NOT yet detected.{Colors.ENDC}")
+            print(f"{Colors.WARNING}⚠️ No reply received.{Colors.ENDC}")
             
     except Exception as e:
         print(f"{Colors.FAIL}Step 2 Failed: {e}{Colors.ENDC}")

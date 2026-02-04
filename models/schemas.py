@@ -131,6 +131,16 @@ class HoneypotResponse(BaseModel):
     error: Optional[str] = None
 
 
+class HoneypotChatResponse(BaseModel):
+    """
+    Simplified API response model for chat engagement.
+    Matches the required format: {"status": "success", "reply": "..."}
+    """
+    status: Literal["success", "error"] = "success"
+    reply: str
+
+
+
 # ==========================================
 # DETECTION COUNCIL MODELS
 # ==========================================

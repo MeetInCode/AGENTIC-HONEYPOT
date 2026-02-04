@@ -8,7 +8,7 @@ from fastapi.security import APIKeyHeader
 from rich.console import Console
 from typing import Optional
 
-from models.schemas import HoneypotRequest, HoneypotResponse
+from models.schemas import HoneypotRequest, HoneypotResponse, HoneypotChatResponse
 from core.orchestrator import get_orchestrator, HoneypotOrchestrator
 from config.settings import get_settings
 
@@ -45,14 +45,14 @@ async def verify_api_key(
 
 @router.post(
     "/analyze",
-    response_model=HoneypotResponse,
+    response_model=HoneypotChatResponse,
     status_code=status.HTTP_200_OK,
     summary="Analyze Message",
     description="Analyze an incoming message for scam intent and engage if detected.",
     responses={
         200: {
             "description": "Successful analysis and response",
-            "model": HoneypotResponse
+            "model": HoneypotChatResponse
         },
         401: {"description": "Missing API key"},
         403: {"description": "Invalid API key"},
@@ -62,7 +62,7 @@ async def verify_api_key(
 async def analyze_message(
     request: HoneypotRequest,
     api_key: str = Depends(verify_api_key)
-) -> HoneypotResponse:
+) -> HoneypotChatResponse:
     """
     Main endpoint for analyzing incoming messages.
     
@@ -71,9 +71,7 @@ async def analyze_message(
     2. Runs it through the Detection Council (multi-model ensemble)
     3. If scam is detected, activates the AI engagement agent
     4. Extracts intelligence from the conversation
-    5. Returns structured response with agent's reply
-    
-    The sessionId is used to track multi-turn conversations.
+    5. Returns simplified JSON response: {"status": "success", "reply": "..."}
     """
     console.print(f"\n[bold blue]{'='*60}[/bold blue]")
     console.print(f"[bold blue]📥 Received request for session: {request.sessionId}[/bold blue]")
@@ -81,12 +79,19 @@ async def analyze_message(
     
     try:
         orchestrator = await get_orchestrator()
+        # Get full result from orchestrator
         response = await orchestrator.process_message(request)
         
         console.print(f"[bold green]✅ Response ready - Scam: {response.scamDetected}[/bold green]")
         console.print(f"[bold blue]{'='*60}[/bold blue]\n")
         
-        return response
+        # Map to strict simplified format for the Hackathon API
+        reply_text = response.agentResponse if response.agentResponse else ""
+        
+        return HoneypotChatResponse(
+            status="success",
+            reply=reply_text
+        )
         
     except Exception as e:
         console.print(f"[bold red]❌ Error processing message: {e}[/bold red]")
