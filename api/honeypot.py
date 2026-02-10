@@ -1,195 +1,77 @@
 """
-Main Honeypot API endpoints.
-Handles incoming scam messages and returns engagement responses.
+Honeypot API — POST /honeypot/message
+PRD-aligned single endpoint with x-api-key auth.
 """
 
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Header, status
-from fastapi.security import APIKeyHeader
-from rich.console import Console
-from typing import Optional
-
-from models.schemas import HoneypotRequest, HoneypotResponse, HoneypotChatResponse
-from core.orchestrator import get_orchestrator, HoneypotOrchestrator
+from models.schemas import HoneypotRequest, HoneypotResponse
+from core.orchestrator import HoneypotOrchestrator
 from config.settings import get_settings
 
+logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1", tags=["Honeypot"])
-console = Console()
+router = APIRouter(tags=["Honeypot"])
 
-# API Key authentication
-api_key_header = APIKeyHeader(name="x-api-key", auto_error=False)
+# Singleton orchestrator — initialized on first request
+_orchestrator: HoneypotOrchestrator = None
 
 
-async def verify_api_key(
-    api_key: Optional[str] = Depends(api_key_header)
-) -> str:
-    """
-    Verify the API key from request header.
-    """
+def get_orchestrator() -> HoneypotOrchestrator:
+    """Get or create the orchestrator singleton."""
+    global _orchestrator
+    if _orchestrator is None:
+        _orchestrator = HoneypotOrchestrator()
+    return _orchestrator
+
+
+async def verify_api_key(x_api_key: str = Header(..., alias="x-api-key")) -> str:
+    """Validate the API key from request header."""
     settings = get_settings()
-    
-    if not api_key:
+    if x_api_key != settings.api_secret_key:
+        logger.warning(f"Invalid API key attempt: {x_api_key[:10]}...")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing API key. Provide x-api-key header."
+            detail="Invalid API key",
         )
-    
-    if api_key != settings.api_secret_key:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Invalid API key."
-        )
-    
-    return api_key
+    return x_api_key
 
 
 @router.post(
-    "/analyze",
-    response_model=HoneypotChatResponse,
+    "/honeypot/message",
+    response_model=HoneypotResponse,
     status_code=status.HTTP_200_OK,
-    summary="Analyze Message",
-    description="Analyze an incoming message for scam intent and engage if detected.",
-    responses={
-        200: {
-            "description": "Successful analysis and response",
-            "model": HoneypotChatResponse
-        },
-        401: {"description": "Missing API key"},
-        403: {"description": "Invalid API key"},
-        500: {"description": "Internal server error"}
-    }
+    summary="Process a scam message",
+    description=(
+        "Receives an incoming message, detects scam intent via a 5-model LLM council, "
+        "and returns an immediate human-like engagement reply. Intelligence extraction "
+        "and callback to GUVI happen asynchronously."
+    ),
 )
-async def analyze_message(
+async def process_message(
     request: HoneypotRequest,
-    api_key: str = Depends(verify_api_key)
-) -> HoneypotChatResponse:
+    api_key: str = Depends(verify_api_key),
+) -> HoneypotResponse:
     """
-    Main endpoint for analyzing incoming messages.
+    Main honeypot endpoint — PRD-aligned.
     
-    This endpoint:
-    1. Receives a suspected scam message
-    2. Runs it through the Detection Council (multi-model ensemble)
-    3. If scam is detected, activates the AI engagement agent
-    4. Extracts intelligence from the conversation
-    5. Returns simplified JSON response: {"status": "success", "reply": "..."}
+    Accepts a scam message, runs detection council,
+    generates engagement reply, returns immediately.
     """
-    console.print(f"\n[bold blue]{'='*60}[/bold blue]")
-    console.print(f"[bold blue]📥 Received request for session: {request.sessionId}[/bold blue]")
-    console.print(f"[dim]Message: {request.message.text[:100]}...[/dim]" if len(request.message.text) > 100 else f"[dim]Message: {request.message.text}[/dim]")
-    
-    try:
-        orchestrator = await get_orchestrator()
-        # Get full result from orchestrator
-        response = await orchestrator.process_message(request)
-        
-        console.print(f"[bold green]✅ Response ready - Scam: {response.scamDetected}[/bold green]")
-        console.print(f"[bold blue]{'='*60}[/bold blue]\n")
-        
-        # Map to strict simplified format for the Hackathon API
-        reply_text = response.agentResponse if response.agentResponse else ""
-        
-        return HoneypotChatResponse(
-            status="success",
-            reply=reply_text
-        )
-        
-    except Exception as e:
-        console.print(f"[bold red]❌ Error processing message: {e}[/bold red]")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error processing message: {str(e)}"
-        )
+    logger.info(
+        f"Incoming message: session={request.sessionId}, "
+        f"sender={request.message.sender}, "
+        f"text='{request.message.text[:80]}...'"
+    )
 
+    orchestrator = get_orchestrator()
+    response = await orchestrator.process_message(request)
 
-@router.post(
-    "/callback/{session_id}",
-    status_code=status.HTTP_200_OK,
-    summary="Force Callback",
-    description="Manually trigger the GUVI callback for a session."
-)
-async def force_callback(
-    session_id: str,
-    api_key: str = Depends(verify_api_key)
-) -> dict:
-    """
-    Manually trigger the GUVI callback for a specific session.
-    Useful for testing or forcing early callback submission.
-    """
-    try:
-        orchestrator = await get_orchestrator()
-        success = await orchestrator.force_callback(session_id)
-        
-        if success:
-            return {"status": "success", "message": f"Callback sent for session {session_id}"}
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Session {session_id} not found"
-            )
-            
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error sending callback: {str(e)}"
-        )
+    logger.info(
+        f"Response: session={response.sessionId}, "
+        f"scam={response.scamDetected}, "
+        f"conf={response.confidence:.2f}, "
+        f"reply='{response.reply[:60]}...'"
+    )
 
-
-@router.get(
-    "/sessions",
-    status_code=status.HTTP_200_OK,
-    summary="List Sessions",
-    description="List all active sessions."
-)
-async def list_sessions(
-    api_key: str = Depends(verify_api_key)
-) -> dict:
-    """
-    List all currently active sessions.
-    """
-    from services.session_manager import get_session_manager
-    
-    session_manager = get_session_manager()
-    sessions = session_manager.list_sessions()
-    
-    return {
-        "active_sessions": len(sessions),
-        "session_ids": sessions
-    }
-
-
-@router.get(
-    "/session/{session_id}",
-    status_code=status.HTTP_200_OK,
-    summary="Get Session Details",
-    description="Get details of a specific session."
-)
-async def get_session(
-    session_id: str,
-    api_key: str = Depends(verify_api_key)
-) -> dict:
-    """
-    Get detailed information about a specific session.
-    """
-    from services.session_manager import get_session_manager
-    
-    session_manager = get_session_manager()
-    session = session_manager.get_session(session_id)
-    
-    if not session:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Session {session_id} not found"
-        )
-    
-    return {
-        "session_id": session.session_id,
-        "is_scam_detected": session.is_scam_detected,
-        "total_messages": session.total_messages,
-        "duration_seconds": session.get_duration_seconds(),
-        "callback_sent": session.callback_sent,
-        "callback_response_log": session.callback_response_log,
-        "extracted_intelligence": session.extracted_intelligence.model_dump(),
-        "agent_notes": session.agent_notes
-    }
+    return response

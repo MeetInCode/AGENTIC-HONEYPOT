@@ -1,11 +1,6 @@
-"""LangGraph Engagement Agent module."""
+"""Engagement package."""
 
-from .engagement_graph import EngagementGraph
-from .persona_manager import PersonaManager
-from .response_generator import ResponseGenerator
+from engagement.response_generator import ResponseGenerator
+from engagement.persona_manager import PersonaManager
 
-__all__ = [
-    "EngagementGraph",
-    "PersonaManager", 
-    "ResponseGenerator",
-]
+__all__ = ["ResponseGenerator", "PersonaManager"]

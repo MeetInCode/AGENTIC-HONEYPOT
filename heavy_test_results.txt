@@ -1,0 +1,114 @@
+───────────────── 🧪 STARTING HEAVY LOAD TEST (30+ Messages) ──────────────────
+Context Length: 2075 chars
+─────────────────────────── Step 1: Council Voting ────────────────────────────
+✅ NemotronVoter replied (Conf: 0.95)
+✅ DeepSeekVoter replied (Conf: 0.95)
+✅ MinimaxVoter replied (Conf: 0.95)
+✅ LlamaScoutVoter replied (Conf: 0.95)
+✅ GptOssVoter replied (Conf: 0.97)
+───────────────────────── Step 2: Judge Adjudication ──────────────────────────
+╭──────────────────────────── Judge Final Payload ────────────────────────────╮
+│ {                                                                           │
+│   "sessionId": "heavy-test-session",                                        │
+│   "scamDetected": true,                                                     │
+│   "totalMessagesExchanged": 31,                                             │
+│   "confidence": 0.96,                                                       │
+│   "scamType": "crypto/DeFi investment scam",                                │
+│   "extractedIntelligence": {                                                │
+│     "bankAccounts": [                                                       │
+│       "reference_to_bank"                                                   │
+│     ],                                                                      │
+│     "upiIds": [],                                                           │
+│     "phishingLinks": [                                                      │
+│       "defi-secure-node-vip.com"                                            │
+│     ],                                                                      │
+│     "phoneNumbers": [],                                                     │
+│     "suspiciousKeywords": [                                                 │
+│       "Goldman Sachs",                                                      │
+│       "P2P merchant",                                                       │
+│       "Trust Wallet",                                                       │
+│       "USDT",                                                               │
+│       "VIP tier",                                                           │
+│       "as soon as possible",                                                │
+│       "bank",                                                               │
+│       "call your bank",                                                     │
+│       "can teach you",                                                      │
+│       "crypto",                                                             │
+│       "defi node platform",                                                 │
+│       "deposit",                                                            │
+│       "don't let me down",                                                  │
+│       "family member",                                                      │
+│       "huge profit",                                                        │
+│       "inside signals",                                                     │
+│       "investment",                                                         │
+│       "node",                                                               │
+│       "screenshot",                                                         │
+│       "send the screenshot",                                                │
+│       "start small ($100)",                                                 │
+│       "tonight",                                                            │
+│       "trust me",                                                           │
+│       "VIP tier ($1000)"                                                    │
+│     ]                                                                       │
+│   },                                                                        │
+│   "agentNotes": "The conversation exhibits a high-confidence crypto/DeFi    │
+│ investment scam. The scammer uses social engineering tactics to build       │
+│ rapport, gain trust, and create urgency around a lucrative investment       │
+│ opportunity. Red flags include requests to deceive bank institutions, use   │
+│ of P2P merchants, and pushing for interactions with suspicious links and    │
+│ wallets. The progressive escalation pattern and multiple indicators of      │
+│ fraud solidify the scam classification."                                    │
+│ }                                                                           │
+╰─────────────────────────────────────────────────────────────────────────────╯
+✅ Strict Format Check Passed: No conversationLog
+─────────────────────────── FINAL CALLBACK PAYLOAD ────────────────────────────
+{
+  "sessionId": "heavy-test-session",
+  "scamDetected": true,
+  "totalMessagesExchanged": 31,
+  "confidence": 0.96,
+  "scamType": "crypto/DeFi investment scam",
+  "extractedIntelligence": {
+    "bankAccounts": [
+      "reference_to_bank"
+    ],
+    "upiIds": [],
+    "phishingLinks": [
+      "defi-secure-node-vip.com"
+    ],
+    "phoneNumbers": [],
+    "suspiciousKeywords": [
+      "Goldman Sachs",
+      "P2P merchant",
+      "Trust Wallet",
+      "USDT",
+      "VIP tier",
+      "as soon as possible",
+      "bank",
+      "call your bank",
+      "can teach you",
+      "crypto",
+      "defi node platform",
+      "deposit",
+      "don't let me down",
+      "family member",
+      "huge profit",
+      "inside signals",
+      "investment",
+      "node",
+      "screenshot",
+      "send the screenshot",
+      "start small ($100)",
+      "tonight",
+      "trust me",
+      "VIP tier ($1000)"
+    ]
+  },
+  "agentNotes": "The conversation exhibits a high-confidence crypto/DeFi 
+investment scam. The scammer uses social engineering tactics to build rapport, 
+gain trust, and create urgency around a lucrative investment opportunity. Red 
+flags include requests to deceive bank institutions, use of P2P merchants, and 
+pushing for interactions with suspicious links and wallets. The progressive 
+escalation pattern and multiple indicators of fraud solidify the scam 
+classification."
+}
+✅ Strict Format Check Passed: No conversationLog

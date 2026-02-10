@@ -1,179 +1,140 @@
 """
-Detection Council
-Orchestrates all detection agents and produces final verdicts.
+Detection Council — orchestrates 5 voters + 1 judge.
+
+Voters (run in parallel):
+  1. NemotronVoter   (NVIDIA)
+  2. DeepSeekVoter   (NVIDIA)
+  3. MinimaxVoter    (NVIDIA)
+  4. LlamaScoutVoter (Groq)
+  5. GptOssVoter     (Groq)
+
+Judge:
+  JudgeAgent (Groq, llama-4-scout)
 """
 
 import asyncio
+import logging
 import time
-from typing import List, Optional
-from rich.console import Console
-from rich.table import Table
+from typing import List
+from models.schemas import CouncilVote, CouncilVerdict
+from agents.nvidia_agents import NemotronVoter, DeepSeekVoter, MinimaxVoter
+from agents.groq_agents import LlamaScoutVoter, GptOssVoter
+from agents.meta_moderator import JudgeAgent
+from utils.rich_printer import print_council_votes, print_judge_verdict
 
-from .base_agent import BaseDetectionAgent
-from .rule_guard import RuleGuardAgent
-from .fast_ml import FastMLAgent
-# from .bert_lite import BertLiteAgent
-from .lex_judge import LexJudgeAgent
-from .outlier_sentinel import OutlierSentinelAgent
-from .context_seer import ContextSeerAgent
-from .meta_moderator import MetaModeratorAgent
-from .nvidia_agents import NvidiaMistralAgent, NvidiaDeepSeekAgent, NvidiaGeneralAgent
-from models.schemas import Message, CouncilVote, CouncilVerdict
-
-
-console = Console()
+logger = logging.getLogger(__name__)
 
 
 class DetectionCouncil:
-    """
-    Orchestrates the Detection Council - a multi-model ensemble
-    for scam detection. Coordinates all agents and produces
-    aggregated verdicts.
-    """
-    
-    def __init__(self):
-        """Initialize all council members."""
-        self.agents: List[BaseDetectionAgent] = [
-            RuleGuardAgent(),
-            FastMLAgent(),
-            # BertLiteAgent(),
-            LexJudgeAgent(),
-            OutlierSentinelAgent(),
-            ContextSeerAgent(),
-            # NvidiaMistralAgent(),
-            # NvidiaDeepSeekAgent(),
-            NvidiaGeneralAgent(),
-        ]
-        self.meta_moderator = MetaModeratorAgent()
-        self._initialized = False
-    
-    async def initialize(self) -> None:
-        """Initialize all council agents."""
-        if self._initialized:
-            return
-        
-        console.print("[bold blue]🏛️ Initializing Detection Council...[/bold blue]")
-        
-        # Initialize all agents in parallel
-        init_tasks = [agent.initialize() for agent in self.agents]
-        init_tasks.append(self.meta_moderator.initialize())
-        
-        await asyncio.gather(*init_tasks, return_exceptions=True)
-        
-        self._initialized = True
-        console.print("[bold green]✅ Detection Council ready![/bold green]")
-    
-    async def _timed_analyze(self, agent, message, history, metadata):
-        """Analyze with timing."""
-        start_time = time.perf_counter()
-        try:
-            result = await agent.analyze(message, history, metadata)
-            elapsed = time.perf_counter() - start_time
-            # Store duration in result if possible or just log it
-            # We will log it here for immediate visibility
-            color = "green" if elapsed < 1.0 else "yellow" if elapsed < 3.0 else "red"
-            console.print(f"  [{color}]⏱️ {agent.name}: {elapsed:.4f}s[/{color}]")
-            return result
-        except Exception as e:
-            elapsed = time.perf_counter() - start_time
-            console.print(f"[bold red]  ⏱️ {agent.name} FAILED after {elapsed:.4f}s: {e}[/bold red]")
-            return e
+    """Runs 5 detection voters in parallel, then passes results to a judge."""
 
-    async def analyze(
-        self,
-        message: str,
-        conversation_history: Optional[List[Message]] = None,
-        metadata: Optional[dict] = None
-    ) -> CouncilVerdict:
+    def __init__(self):
+        # Initialize all voters
+        self.voters = [
+            NemotronVoter(),
+            DeepSeekVoter(),
+            MinimaxVoter(),
+            LlamaScoutVoter(),
+            GptOssVoter(),
+        ]
+        self.judge = JudgeAgent()
+        logger.info(f"Detection Council initialized with {len(self.voters)} voters")
+
+    async def analyze(self, message: str, context: str = "No prior context", session_id: str = "unknown", turn_count: int = 0) -> CouncilVerdict:
         """
-        Analyze a message using all council members.
+        Run all voters in parallel, collect votes, and pass to judge.
         
         Args:
-            message: The message to analyze
-            conversation_history: Previous messages in the conversation
-            metadata: Additional context (channel, language, locale)
+            message: The incoming message text to analyze
+            context: Summary of conversation history
+            session_id: The active session ID
+            turn_count: Current conversation turn
             
         Returns:
-            CouncilVerdict with final decision and all votes
+            CouncilVerdict with final scam determination
         """
-        if not self._initialized:
-            await self.initialize()
-        
-        console.print(f"\n[bold yellow]🔍 Analyzing message:[/bold yellow] {message[:100]}...")
-        console.print("[bold]Agent Response Times:[/bold]")
-        
-        # Collect votes from all agents in parallel with timing
-        vote_tasks = [
-            self._timed_analyze(agent, message, conversation_history, metadata)
-            for agent in self.agents
-        ]
-        
-        votes: List[CouncilVote] = await asyncio.gather(
-            *vote_tasks, 
-            return_exceptions=True
-        )
-        
-        # Filter out exceptions and keep valid votes
-        valid_votes = [
-            vote for vote in votes 
-            if isinstance(vote, CouncilVote)
-        ]
-        
-        # Log any failed votes (already logged in timed_analyze but good for summary)
-        # for i, result in enumerate(votes):
-        #     if isinstance(result, Exception):
-        #         console.print(
-        #             f"[red]⚠️ {self.agents[i].name} failed: {result}[/red]"
-        #         )
-        
-        # Get final verdict from meta-moderator
-        verdict = await self.meta_moderator.aggregate_votes(valid_votes)
-        
-        # Display results
-        self._display_verdict(verdict)
-        
-        return verdict
-    
-    def _display_verdict(self, verdict: CouncilVerdict) -> None:
-        """Display the council verdict in a formatted table."""
-        # Create votes table
-        table = Table(title="🏛️ Detection Council Votes")
-        table.add_column("Agent", style="cyan")
-        table.add_column("Type", style="dim")
-        table.add_column("Verdict", style="bold")
-        table.add_column("Confidence", justify="right")
-        table.add_column("Key Indicators", style="italic")
-        
-        for vote in verdict.votes:
-            verdict_cell = "[red]🚨 SCAM[/red]" if vote.is_scam else "[green]✅ SAFE[/green]"
-            confidence_cell = f"{vote.confidence:.0%}"
-            features = ", ".join(vote.features[:3]) if vote.features else "-"
+        start_time = time.time()
+
+        # Run all voters in parallel
+        vote_tasks = [voter.vote(message, context, session_id, turn_count) for voter in self.voters]
+        votes: List[CouncilVote] = await asyncio.gather(*vote_tasks, return_exceptions=True)
+
+        # Filter out exceptions, keep valid votes
+        valid_votes = []
+        for i, vote in enumerate(votes):
+            if isinstance(vote, Exception):
+                logger.error(f"Voter {self.voters[i].__class__.__name__} failed: {vote}")
+                # Create a fallback abstain vote
+                valid_votes.append(CouncilVote(
+                    agent_name=self.voters[i].__class__.__name__,
+                    is_scam=False,
+                    confidence=0.0,
+                    reasoning=f"Voter error: {str(vote)[:100]}",
+                ))
+            else:
+                valid_votes.append(vote)
+
+        voting_elapsed = time.time() - start_time
+
+        # ── Rich Print: Council Votes ──
+        print_council_votes(valid_votes, voting_elapsed)
+
+        # Pass to judge for final verdict
+        # 3. Judge Aggregation (Simulated for speed or LLM)
+        try:
+            # New strict JSON aggregation
+            final_payload = await self.judge.adjudication(message, votes, session_id, turn_count)
             
-            table.add_row(
-                vote.agent_name,
-                vote.agent_type,
-                verdict_cell,
-                confidence_cell,
-                features[:50] + "..." if len(features) > 50 else features
+            # Store in session state
+            session_state.final_callback_payload = final_payload
+            
+            # Update session state with values from the payload for compatibility
+            session_state.is_scam_detected = final_payload.get("scamDetected", False)
+            session_state.scam_confidence = 1.0 if session_state.is_scam_detected else 0.0 # Confidence not in strict payload?
+            # Actually strict payload doesn't have 'confidence' field in user request!
+            # User request: sessionId, scamDetected, totalMessagesExchanged, extractedIntelligence, agentNotes.
+            # So session_state.scam_confidence might be undefined/dummy.
+            
+            # Create a dummy verdict object for compatibility if needed elsewhere
+            session_state.council_verdict = CouncilVerdict(
+                is_scam=session_state.is_scam_detected,
+                confidence=0.99 if session_state.is_scam_detected else 0.0,
+                scam_type="aggregated",
+                reasoning=final_payload.get("agentNotes", ""),
+                votes=votes,
+                scam_votes=sum(1 for v in votes if v.is_scam),
+                voter_count=len(votes)
             )
-        
-        console.print(table)
-        
-        # Display final verdict
-        if verdict.is_scam:
-            console.print(
-                f"\n[bold red]🚨 FINAL VERDICT: SCAM DETECTED "
-                f"(Confidence: {verdict.confidence:.0%})[/bold red]"
+            
+            logger.info(f"👨‍⚖️ Council Verdict: SCAM={session_state.is_scam_detected}")
+
+        except Exception as e:
+            logger.error(f"Judge error: {e}")
+            # Fallback verdict in case of judge failure
+            session_state.council_verdict = CouncilVerdict(
+                is_scam=False,
+                confidence=0.0,
+                scam_type="error",
+                reasoning=f"Judge adjudication failed: {str(e)}",
+                votes=votes,
+                scam_votes=sum(1 for v in votes if v.is_scam),
+                voter_count=len(votes)
             )
-        else:
-            console.print(
-                f"\n[bold green]✅ FINAL VERDICT: SAFE "
-                f"(Confidence: {verdict.confidence:.0%})[/bold green]"
-            )
-        
-        console.print(f"[dim]{verdict.justification}[/dim]")
-    
-    async def cleanup(self) -> None:
-        """Cleanup all agent resources."""
-        cleanup_tasks = [agent.cleanup() for agent in self.agents]
-        await asyncio.gather(*cleanup_tasks, return_exceptions=True)
+            session_state.is_scam_detected = False
+            session_state.scam_confidence = 0.0
+            session_state.final_callback_payload = {
+                "sessionId": session_id,
+                "scamDetected": False,
+                "totalMessagesExchanged": turn_count,
+                "extractedIntelligence": "Judge adjudication failed.",
+                "agentNotes": f"Judge adjudication failed: {str(e)}"
+            }
+
+        total_elapsed = time.time() - start_time
+        logger.info(
+            f"Council complete: scam={session_state.council_verdict.is_scam}, conf={session_state.council_verdict.confidence:.2f}, "
+            f"type={session_state.council_verdict.scam_type}, votes={session_state.council_verdict.scam_votes}/{session_state.council_verdict.voter_count}, "
+            f"total_time={total_elapsed:.2f}s"
+        )
+
+        return session_state.council_verdict

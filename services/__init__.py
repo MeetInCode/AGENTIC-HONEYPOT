@@ -1,13 +1,7 @@
-"""Services module for Agentic Honeypot."""
+"""Services package."""
 
-from .intelligence_extractor import IntelligenceExtractor
-from .callback_service import CallbackService, get_callback_service
-from .session_manager import SessionManager, get_session_manager
+from services.session_manager import SessionManager
+from services.callback_service import CallbackService
+from services.intelligence_extractor import IntelligenceExtractor
 
-__all__ = [
-    "IntelligenceExtractor",
-    "CallbackService",
-    "get_callback_service",
-    "SessionManager",
-    "get_session_manager",
-]
+__all__ = ["SessionManager", "CallbackService", "IntelligenceExtractor"]

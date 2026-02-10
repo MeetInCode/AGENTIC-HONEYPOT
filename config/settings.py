@@ -1,89 +1,85 @@
 """
-Configuration settings for the Agentic Honeypot system.
-Loads environment variables and provides type-safe configuration.
+Application settings — PRD-aligned model configuration.
 """
 
 from pydantic_settings import BaseSettings
 from pydantic import Field
-from typing import Optional
 from functools import lru_cache
 
 
 class Settings(BaseSettings):
-    """Application settings loaded from environment variables."""
+    """Environment-based configuration."""
+
+    # ── API Security ──
+    api_secret_key: str = Field(default="test-key-123", alias="API_SECRET_KEY")
+
+    # ── Groq Configuration ──
+    groq_api_key: str = Field(default="", alias="GROQ_API_KEY")
     
-    # API Security
-    api_secret_key: str = Field(..., env="API_SECRET_KEY")
-    
-    # Groq API Configuration
-    groq_api_key: str = Field(..., env="GROQ_API_KEY")
-    groq_model_detection: str = Field(
-        default="llama-3.3-70b-versatile", 
-        env="GROQ_MODEL_DETECTION"
+    # PRD-mandated Groq models
+    groq_model_scout: str = Field(
+        default="meta-llama/llama-4-scout-17b-16e-instruct",
+        alias="GROQ_MODEL_SCOUT",
+        description="Council Voter 4, Judge, Intelligence Extraction"
     )
     groq_model_engagement: str = Field(
-        default="openai/gpt-oss-120b", 
-        env="GROQ_MODEL_ENGAGEMENT"
+        default="openai/gpt-oss-120b",
+        alias="GROQ_MODEL_ENGAGEMENT",
+        description="Council Voter 5, Engagement Response Generator"
     )
-    groq_model_summarizer: str = Field(
-        default="llama-3.3-70b-versatile", 
-        env="GROQ_MODEL_SUMMARIZER"
-    )
-    
-    # NVIDIA NIM Configuration (Optional)
-    nvidia_api_key: Optional[str] = Field(default=None, env="NVIDIA_API_KEY")
+
+    # ── NVIDIA NIM Configuration ──
+    nvidia_api_key: str = Field(default="", alias="NVIDIA_API_KEY")
     nvidia_base_url: str = Field(
         default="https://integrate.api.nvidia.com/v1",
-        env="NVIDIA_BASE_URL"
+        alias="NVIDIA_BASE_URL"
     )
-    nvidia_model_mistral: str = Field(
-        default="mistralai/mistral-large-3-675b-instruct-2512",
-        env="NVIDIA_MODEL_MISTRAL"
+    
+    # PRD-mandated NVIDIA models
+    nvidia_model_nemotron: str = Field(
+        default="nvidia/llama-3.3-nemotron-super-49b-v1",
+        alias="NVIDIA_MODEL_NEMOTRON",
+        description="Council Voter 1"
     )
     nvidia_model_deepseek: str = Field(
-        default="deepseek-ai/deepseek-r1-distill-qwen-7b",
-        env="NVIDIA_MODEL_DEEPSEEK"
+        default="deepseek-ai/deepseek-v3",
+        alias="NVIDIA_MODEL_DEEPSEEK",
+        description="Council Voter 2"
     )
-    nvidia_model_general: str = Field(
-        default="openai/gpt-oss-120b",
-        env="NVIDIA_MODEL_GENERAL"
+    nvidia_model_minimax: str = Field(
+        default="minimax/minimax-m2",
+        alias="NVIDIA_MODEL_MINIMAX",
+        description="Council Voter 3"
     )
-    
-    # GUVI Callback Configuration
+
+    # ── Callback ──
     guvi_callback_url: str = Field(
         default="https://hackathon.guvi.in/api/updateHoneyPotFinalResult",
-        env="GUVI_CALLBACK_URL"
+        alias="GUVI_CALLBACK_URL"
     )
-    
-    # Database Configuration
-    database_url: str = Field(
-        default="sqlite:///./honeypot.db",
-        env="DATABASE_URL"
+
+    # ── Application Settings ──
+    inactivity_timeout_seconds: int = Field(
+        default=30, alias="INACTIVITY_TIMEOUT_SECONDS",
+        description="Seconds of inactivity before triggering callback"
     )
+    max_conversation_turns: int = Field(default=20, alias="MAX_CONVERSATION_TURNS")
+    scam_confidence_threshold: float = Field(default=0.6, alias="SCAM_CONFIDENCE_THRESHOLD")
     
-    # Application Settings
-    debug: bool = Field(default=False, env="DEBUG")
-    log_level: str = Field(default="INFO", env="LOG_LEVEL")
-    max_conversation_turns: int = Field(default=20, env="MAX_CONVERSATION_TURNS")
-    scam_confidence_threshold: float = Field(
-        default=0.6, 
-        env="SCAM_CONFIDENCE_THRESHOLD"
-    )
-    
-    # Rate Limiting
-    rate_limit_requests: int = Field(default=100, env="RATE_LIMIT_REQUESTS")
-    rate_limit_period_seconds: int = Field(default=60, env="RATE_LIMIT_PERIOD_SECONDS")
-    
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
+    # ── Server ──
+    port: int = Field(default=8000, alias="PORT")
+    debug: bool = Field(default=False, alias="DEBUG")
+    log_level: str = Field(default="INFO", alias="LOG_LEVEL")
+
+    model_config = {
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        "extra": "ignore",
+        "populate_by_name": True,
+    }
 
 
 @lru_cache()
 def get_settings() -> Settings:
-    """
-    Get cached settings instance.
-    Uses lru_cache to ensure settings are loaded only once.
-    """
+    """Return cached settings instance."""
     return Settings()

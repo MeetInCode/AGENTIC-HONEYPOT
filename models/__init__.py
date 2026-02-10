@@ -1,27 +1,12 @@
-"""Data models for the Agentic Honeypot system."""
-
-from .schemas import (
-    Message,
-    Metadata,
-    HoneypotRequest,
-    HoneypotResponse,
-    ExtractedIntelligence,
-    EngagementMetrics,
-    CouncilVote,
-    CouncilVerdict,
-    CallbackPayload,
-    SessionState,
+"""Models package."""
+from models.schemas import (
+    HoneypotRequest, HoneypotResponse, Message, Metadata,
+    CouncilVote, CouncilVerdict, SessionState,
+    CallbackPayload, EngagementMetrics,
 )
 
 __all__ = [
-    "Message",
-    "Metadata",
-    "HoneypotRequest",
-    "HoneypotResponse",
-    "ExtractedIntelligence",
-    "EngagementMetrics",
-    "CouncilVote",
-    "CouncilVerdict",
-    "CallbackPayload",
-    "SessionState",
+    "HoneypotRequest", "HoneypotResponse", "Message", "Metadata",
+    "CouncilVote", "CouncilVerdict", "SessionState",
+    "CallbackPayload", "EngagementMetrics",
 ]

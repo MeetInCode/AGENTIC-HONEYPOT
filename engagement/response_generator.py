@@ -1,226 +1,189 @@
 """
-Response Generator for the Engagement Agent.
-Generates believable victim responses using LLM.
+Response Generator — generates believable victim replies.
+Uses openai/gpt-oss-120b on Groq exclusively (PRD requirement).
+
+Design philosophy (Context7 research):
+  The system prompt defines WHO the LLM is. The user messages are what
+  the scammer says. The LLM responds AS the persona — not about the persona.
+  Few-shot examples in the system prompt teach the exact texting style.
+  Turn-adaptive guidance nudges behavior without breaking character.
 """
 
-from typing import List, Optional, Dict, Any
-import json
+import logging
+import random
+from typing import List, Dict, Any
 from groq import AsyncGroq
-from openai import AsyncOpenAI
-
-from .persona_manager import VictimPersona
-from models.schemas import Message
 from config.settings import get_settings
+from engagement.persona_manager import PersonaManager
+
+logger = logging.getLogger(__name__)
+
+# Fallback responses — written in Ramesh's voice, not generic chatbot language
+FALLBACK_RESPONSES = [
+    "sorry phone was on silent... kya bol rahe the aap?",
+    "wait ek minute, Vikrant bol raha hai kuch... haan bolo",
+    "hmm I didn't understand properly. can you say again plz?",
+    "arey hold on, my glasses are somewhere... one sec",
+    "oh accha... let me check this. wait",
+    "beta my phone hanged for a moment. what you said?",
+    "sir plz repeat, network was bad for a second",
+    "haan ji... I was making chai. now tell me",
+]
+
+# Turn-specific nudges — these are appended to system prompt but written
+# in the voice of stage directions, not instructions
+TURN_GUIDANCE = {
+    0: """
+
+[SCENE: You just received this message out of nowhere. You were probably watching TV or having chai. React naturally — surprise, confusion, or mild concern. Ask who this person is. Don't comply with anything yet. Keep it to 1 line.]""",
+
+    1: """
+
+[SCENE: You're now talking to this person. You still don't fully understand what they want. Ask clarifying questions — "which bank?", "what happened exactly?", "who are you?". You're a bit worried but not panicking. 1-2 lines max.]""",
+
+    2: """
+
+[SCENE: The conversation is going on. You're starting to take them a bit seriously. Ask things a real person would ask to understand the situation — "my son handles this, should I ask him?", "where do I go to fix this?", "is there a number I can call?". These questions naturally extract information. 1-2 lines.]""",
+
+    3: """
+
+[SCENE: You're now somewhat engaged. You've been talking for a bit. Start asking for practical details: "ok so where I send the money?", "give me the link I will do", "what is your UPI id?", "tell me your name sir so I can tell Vikrant". You're cooperating but slow. 1-2 lines.]""",
+
+    4: """
+
+[SCENE: You're getting deeper into the conversation. Show a tiny bit of hesitation — your son's voice in your head saying "Papa, don't share OTP". But you don't refuse outright. "hmm wait my son told me about this... but you are from bank only na? ok tell me what to do". Still extracting info. 1-2 lines.]""",
+}
+
+# For turns 5+, use this
+LATE_TURN_GUIDANCE = """
+
+[SCENE: This has been going on for a while. You're a bit tired and flustered. You might say things like "sir jaldi bolo, I have to go for evening walk" or "ok ok I am doing... but my phone is slow". You're still cooperating but showing natural fatigue. Keep asking for details. 1-2 lines only.]"""
 
 
 class ResponseGenerator:
-    """
-    Generates believable victim responses using LLM.
-    Maintains persona consistency across conversations.
-    """
-    
+    """Generates human-like victim responses using LLM + single persona."""
+
     def __init__(self):
-        self.settings = get_settings()
-        self.client: Optional[AsyncGroq] = None
-        self.nvidia_client: Optional[AsyncOpenAI] = None
-        self._initialized = False
-    
-    async def initialize(self) -> None:
-        """Initialize the Groq client."""
-        if self._initialized:
-            return
-        
-        self.client = AsyncGroq(api_key=self.settings.groq_api_key)
-        
-        if self.settings.nvidia_api_key:
-            self.nvidia_client = AsyncOpenAI(
-                base_url=self.settings.nvidia_base_url,
-                api_key=self.settings.nvidia_api_key
-            )
-        
-        self._initialized = True
-    
-    async def generate_response(
+        settings = get_settings()
+        self.client = AsyncGroq(api_key=settings.groq_api_key)
+        self.model = settings.groq_model_engagement  # gpt-oss-120b
+        self.persona_manager = PersonaManager()
+        self._fallback_idx = 0
+        logger.info(f"ResponseGenerator initialized with model: {self.model}")
+
+    async def generate(
         self,
-        scammer_message: str,
-        persona: VictimPersona,
-        conversation_history: List[Message],
-        engagement_goal: str,
-        extracted_intel: Optional[Dict[str, Any]] = None
-    ) -> str:
+        message: str,
+        conversation_history: List[Dict[str, Any]],
+        scam_type: str = "unknown",
+        persona_id: str = None,
+        turn_count: int = 0,
+    ) -> tuple[str, str]:
         """
-        Generate a believable victim response.
-        
+        Generate a believable victim response as Ramesh Kumar.
+
         Args:
-            scammer_message: The latest message from the scammer
-            persona: The victim persona to use
+            message: Current scammer message
             conversation_history: Previous messages
-            engagement_goal: Current goal (e.g., "elicit UPI ID")
-            extracted_intel: Already extracted intelligence
-            
+            scam_type: Detected scam type (unused — single persona handles all)
+            persona_id: Unused — single persona
+            turn_count: Current turn number for turn-adaptive guidance
+
         Returns:
-            Generated response text
+            Tuple of (response_text, persona_id_used)
         """
-        if not self._initialized:
-            await self.initialize()
-        
-        # Build conversation context
-        history_text = self._format_history(conversation_history)
-        
-        # Build dynamic instructions based on engagement goal
-        goal_instruction = self._get_goal_instruction(engagement_goal, extracted_intel)
-        
-        system_prompt = persona.get_system_prompt()
-        
-        user_prompt = f"""SCAMMER'S MESSAGE: "{scammer_message}"
-
-CONVERSATION SO FAR:
-{history_text}
-
-CURRENT GOAL: {goal_instruction}
-
-{self._get_intel_status(extracted_intel)}
-
-Generate your response as {persona.name}. Stay in character!
-Keep response natural and concise (1-3 sentences).
-Ask questions to extract more information from the scammer."""
+        persona_id = "ramesh_kumar"
 
         try:
-            # User request: Use "mistrallarge strategicLLM" (Nvidia Mistral) for engagement
-            if self.nvidia_client:
-                # Use Nvidia Mistral for "StrategicLLM" engagement
-                model_id = self.settings.nvidia_model_mistral
-            else:
-                # Fallback to Groq if Nvidia not configured
-                model_id = self.settings.groq_model_engagement
-            
-            # Check if this is an NVIDIA model (basic check based on common prefixes or manual list)
-            is_nvidia = "openai/" in model_id or "meta/" in model_id or "mistralai/" in model_id or "deepseek" in model_id
-            
-            if is_nvidia and self.nvidia_client:
-                # Use NVIDIA client
-                response = await self.nvidia_client.chat.completions.create(
-                    model=model_id,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt}
-                    ],
-                    temperature=0.7,
-                    max_tokens=150,
-                )
-            else:
-                # Use Groq client
-                response = await self.client.chat.completions.create(
-                    model=model_id,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt}
-                    ],
-                    temperature=0.7,
-                    max_tokens=150,
-                )
-            
-            return response.choices[0].message.content.strip()
-            
+            llm_messages = self._build_messages(message, conversation_history, turn_count)
+
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=llm_messages,
+                temperature=0.85,  # High for human-like variation & typos
+                max_tokens=100,    # Force brevity — real people don't write essays in SMS
+                top_p=0.92,        # Slight nucleus sampling for natural word choice
+            )
+
+            reply = response.choices[0].message.content.strip()
+
+            # Strip any quotation marks the LLM might wrap around the response
+            if reply.startswith('"') and reply.endswith('"'):
+                reply = reply[1:-1]
+            if reply.startswith("'") and reply.endswith("'"):
+                reply = reply[1:-1]
+
+            # Safety check: ensure response doesn't reveal detection
+            if self._reveals_detection(reply):
+                reply = self._get_fallback()
+                logger.warning("Response revealed detection — using fallback")
+
+            # Safety check: if response is too long, truncate to last sentence
+            if len(reply) > 200:
+                sentences = reply.split('.')
+                reply = '.'.join(sentences[:2]).strip()
+                if not reply.endswith(('.', '?', '!')):
+                    reply += '...'
+
+            logger.info(
+                f"Generated response ({len(reply)} chars) as '{self.persona_manager.get_persona_name()}'"
+            )
+            return reply, persona_id
+
         except Exception as e:
-            # Fallback to a generic confused response
-            return self._get_fallback_response(persona)
-    
-    def _format_history(self, history: List[Message]) -> str:
-        """Format conversation history for the prompt."""
-        if not history:
-            return "(This is the start of the conversation)"
-        
-        lines = []
-        for msg in history[-8:]:  # Last 8 messages
-            role = "SCAMMER" if msg.sender == "scammer" else "YOU (victim)"
-            lines.append(f"{role}: {msg.text}")
-        
-        return "\n".join(lines)
-    
-    def _get_goal_instruction(
-        self, 
-        goal: str, 
-        extracted_intel: Optional[Dict[str, Any]]
-    ) -> str:
-        """Get specific instruction based on engagement goal."""
-        goal_instructions = {
-            "build_trust": "Build rapport. Sound concerned but cooperative. Don't ask for specifics yet.",
-            "elicit_upi": "Try to get the scammer to share a UPI ID where you should 'send money'.",
-            "elicit_bank": "Ask which bank account to use or request their account details.",
-            "elicit_phone": "Try to get a phone number to 'call them back' or 'verify'.",
-            "elicit_link": "Ask for a link or website to 'complete the process'.",
-            "stall": "Delay the scammer. Say you need to find something or will do it later.",
-            "extract_method": "Get the scammer to explain their full process/method.",
-            "confirm_identity": "Ask questions to confirm who they claim to be.",
-        }
-        
-        base_instruction = goal_instructions.get(goal, "Continue the conversation naturally.")
-        
-        # Add follow-up if we already have some intel
-        if extracted_intel:
-            if extracted_intel.get("upiIds"):
-                base_instruction += " (UPI already obtained, try for bank/phone)"
-            if extracted_intel.get("phoneNumbers"):
-                base_instruction += " (Phone already obtained, try for links/accounts)"
-        
-        return base_instruction
-    
-    def _get_intel_status(self, intel: Optional[Dict[str, Any]]) -> str:
-        """Format already extracted intelligence for context."""
-        if not intel:
-            return "INTELLIGENCE GATHERED: None yet"
-        
-        gathered = []
-        if intel.get("upiIds"):
-            gathered.append(f"UPI IDs: {intel['upiIds']}")
-        if intel.get("phoneNumbers"):
-            gathered.append(f"Phones: {intel['phoneNumbers']}")
-        if intel.get("phishingLinks"):
-            gathered.append(f"Links: {intel['phishingLinks']}")
-        if intel.get("bankAccounts"):
-            gathered.append(f"Accounts: {intel['bankAccounts']}")
-        
-        if gathered:
-            return "INTELLIGENCE GATHERED:\n" + "\n".join(gathered)
-        return "INTELLIGENCE GATHERED: None yet"
-    
-    def _get_fallback_response(self, persona: VictimPersona) -> str:
-        """Get a fallback response when LLM fails."""
-        import random
-        
-        fallback_responses = [
-            f"I am not understanding properly. Can you explain again?",
-            f"Wait, what should I do exactly?",
-            f"Ok ji, please tell me step by step",
-            f"I need a minute, please hold",
-            f"Which account are you talking about?",
-        ]
-        
-        if persona.confusion_phrases:
-            return random.choice(persona.confusion_phrases)
-        
-        return random.choice(fallback_responses)
-    
-    async def generate_closing_response(
+            logger.error(f"Response generation failed: {e}")
+            return self._get_fallback(), persona_id
+
+    def _build_messages(
         self,
-        persona: VictimPersona,
-        max_turns_reached: bool = False
-    ) -> str:
-        """Generate a response to end the engagement."""
-        if max_turns_reached:
-            endings = [
-                f"Sorry, my phone battery is low. I will call you back later.",
-                f"Someone is at the door. I have to go.",
-                f"I will discuss with my family and do it tomorrow.",
-                f"I need to go now. Will do this later.",
-            ]
+        current_message: str,
+        history: List[Dict[str, Any]],
+        turn_count: int,
+    ) -> List[Dict[str, str]]:
+        """Build the LLM message array with persona system prompt + conversation history."""
+
+        # Base system prompt — the persona's entire identity
+        system_prompt = self.persona_manager.get_system_prompt()
+
+        # Append turn-specific scene direction
+        if turn_count in TURN_GUIDANCE:
+            system_prompt += TURN_GUIDANCE[turn_count]
         else:
-            endings = [
-                f"I think there is some mistake. I will go to bank directly.",
-                f"Let me talk to my son first. He knows better.",
-                f"I am feeling confused. Will figure it out later.",
-            ]
-        
-        import random
-        return random.choice(endings)
+            system_prompt += LATE_TURN_GUIDANCE
+
+        messages = [{"role": "system", "content": system_prompt}]
+
+        # Add conversation history (last 8 messages — keeps context tight)
+        recent_history = history[-8:] if len(history) > 8 else history
+        for msg in recent_history:
+            sender = msg.get("sender", "unknown")
+            text = msg.get("text", "")
+            if sender in ("scammer",):
+                messages.append({"role": "user", "content": text})
+            elif sender in ("agent", "user", "honeypot"):
+                messages.append({"role": "assistant", "content": text})
+
+        # Add current scammer message
+        messages.append({"role": "user", "content": current_message})
+
+        return messages
+
+    def _reveals_detection(self, response: str) -> bool:
+        """Check if response accidentally reveals scam detection or AI identity."""
+        lower = response.lower()
+        danger_phrases = [
+            "scam detected", "this is a scam", "you are a scammer",
+            "i know this is fraud", "i'm an ai", "i am an ai",
+            "honeypot", "scam alert", "fraud alert", "scam detection",
+            "i'm a bot", "i am a bot", "artificial intelligence",
+            "as an ai", "i'm designed to", "my programming",
+            "language model", "i don't have personal",
+            "i'm an artificial", "i was designed",
+            "i suspect this is", "this seems fraudulent",
+        ]
+        return any(phrase in lower for phrase in danger_phrases)
+
+    def _get_fallback(self) -> str:
+        """Get a fallback response in Ramesh's voice."""
+        response = random.choice(FALLBACK_RESPONSES)
+        return response

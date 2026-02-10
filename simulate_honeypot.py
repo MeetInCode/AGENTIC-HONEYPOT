@@ -43,6 +43,7 @@ class HoneypotSimulation:
 
     def get_scammer_message(self, last_agent_message=None):
         """Uses Groq to act as a professional scammer."""
+        
         if not self.groq_key:
             return "Urgent: Your bank account is blocked. Verification needed."
             

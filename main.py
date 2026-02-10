@@ -1,97 +1,70 @@
 """
-Agentic Honeypot - Main Application Entry Point
-
-An AI-powered honeypot system for scam detection and intelligence extraction.
+Agentic Honeypot — Main Entry Point
+A single-endpoint AI honeypot that detects scam messages,
+engages scammers with believable personas, extracts intelligence,
+and sends results to the GUVI evaluation endpoint.
 """
 
-import sys
 import os
-from pathlib import Path
-
-# Add project root to path for imports
-project_root = Path(__file__).parent
-sys.path.insert(0, str(project_root))
-
+import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, status
+
+import uvicorn
+from dotenv import load_dotenv
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from rich.console import Console
-import uvicorn
 
-from api.honeypot import router as honeypot_router
-from api.health import router as health_router
+# Load environment variables FIRST
+load_dotenv()
+
 from config.settings import get_settings
-from services.session_manager import get_session_manager
+from api.honeypot import router as honeypot_router
+
+# ─── Logging ──────────────────────────────────────────────────────
+
+settings = get_settings()
+logging.basicConfig(
+    level=getattr(logging, settings.log_level.upper(), logging.INFO),
+    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+    datefmt="%H:%M:%S",
+)
+logger = logging.getLogger(__name__)
 
 
-console = Console()
-
+# ─── Lifespan ─────────────────────────────────────────────────────
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Application lifespan handler.
-    Handles startup and shutdown events.
-    """
-    # Startup
-    console.print("\n" + "=" * 60)
-    console.print("[bold cyan]🍯 AGENTIC HONEYPOT API[/bold cyan]")
-    console.print("[dim]AI-Powered Scam Detection & Intelligence Extraction[/dim]")
-    console.print("=" * 60)
-    
-    settings = get_settings()
-    console.print(f"\n[bold]Configuration:[/bold]")
-    console.print(f"  • Debug Mode: {settings.debug}")
-    console.print(f"  • Log Level: {settings.log_level}")
-    console.print(f"  • Scam Threshold: {settings.scam_confidence_threshold}")
-    console.print(f"  • Max Turns: {settings.max_conversation_turns}")
-    console.print("")
-    
-    # Start session cleanup task
-    session_manager = get_session_manager()
-    await session_manager.start_cleanup_task()
-    
+    """Application startup and shutdown."""
+    logger.info("=" * 60)
+    logger.info("🍯 Agentic Honeypot starting up")
+    logger.info(f"   Endpoint: POST /honeypot/message")
+    logger.info(f"   Callback: {settings.guvi_callback_url}")
+    logger.info(f"   Inactivity timeout: {settings.inactivity_timeout_seconds}s")
+    logger.info(f"   NVIDIA models: nemotron, deepseek-v3, minimax-m2")
+    logger.info(f"   Groq models: llama-4-scout, gpt-oss-120b")
+    logger.info("=" * 60)
     yield
-    
-    # Shutdown
-    console.print("\n[bold yellow]🛑 Shutting down...[/bold yellow]")
-    await session_manager.stop_cleanup_task()
-    console.print("[bold green]✅ Shutdown complete[/bold green]\n")
+    logger.info("🍯 Agentic Honeypot shutting down")
 
 
-# Create FastAPI application
+# ─── App ──────────────────────────────────────────────────────────
+
 app = FastAPI(
     title="Agentic Honeypot API",
-    description="""
-## 🍯 Agentic Honeypot for Scam Detection & Intelligence Extraction
-
-An AI-powered honeypot system that:
-- **Detects** scam messages using a multi-model Detection Council
-- **Engages** scammers autonomously using LangGraph-based agents
-- **Extracts** actionable intelligence (UPI IDs, phone numbers, phishing links)
-- **Reports** results to the GUVI evaluation endpoint
-
-### Detection Council Members
-- 🕵️‍♂️ **RuleGuard**: Rule-based heuristic engine
-- 🧮 **FastML**: TF-IDF + RandomForest classifier
-- 🤖 **BertLite**: DistilBERT transformer model
-- 📜 **LexJudge**: LLM-based text classifier (Groq)
-- 🔍 **OutlierSentinel**: SBERT anomaly detector
-- 🧵 **ContextSeer**: LLM with conversation context
-- 🧰 **MetaModerator**: Ensemble aggregator
-
-### Authentication
-All endpoints require `x-api-key` header for authentication.
-    """,
-    version="1.0.0",
+    description=(
+        "AI-powered honeypot that detects scam messages, engages scammers "
+        "with believable personas, and extracts intelligence. "
+        "Single endpoint: POST /honeypot/message"
+    ),
+    version="2.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
-
-# Add CORS middleware
+# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -104,41 +77,32 @@ app.add_middleware(
 # Global exception handler
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    """Handle uncaught exceptions."""
-    console.print(f"[bold red]❌ Unhandled exception: {exc}[/bold red]")
+    logger.error(f"Unhandled exception: {exc}", exc_info=True)
     return JSONResponse(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={
-            "status": "error",
-            "message": "An unexpected error occurred",
-            "detail": str(exc)
-        }
+        status_code=500,
+        content={"detail": "Internal server error", "error": str(exc)[:200]},
     )
 
 
-# Include routers
-app.include_router(health_router)
-app.include_router(honeypot_router)
-
-
-# Root endpoint
-@app.get("/", tags=["Root"])
-async def root():
-    """Root endpoint with API information."""
+# Health endpoint
+@app.get("/health", tags=["Health"])
+async def health_check():
+    """Health check endpoint."""
     return {
-        "name": "Agentic Honeypot API",
-        "version": "1.0.0",
-        "description": "AI-Powered Scam Detection & Intelligence Extraction",
-        "docs": "/docs",
-        "health": "/health"
+        "status": "ok",
+        "service": "agentic-honeypot",
+        "version": "2.0.0",
     }
 
 
-def main():
-    """Run the application."""
-    settings = get_settings()
-    
-    port = int(os.getenv("PORT", 8000))
+# Mount honeypot router (no prefix — endpoint is /honeypot/message)
+app.include_router(honeypot_router)
+
+
+# ─── Entry Point ──────────────────────────────────────────────────
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", settings.port))
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
@@ -146,7 +110,3 @@ def main():
         reload=settings.debug,
         log_level=settings.log_level.lower(),
     )
-
-
-if __name__ == "__main__":
-    main()

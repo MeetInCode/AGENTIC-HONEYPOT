@@ -1,145 +1,123 @@
 """
-Callback Service for GUVI Evaluation Endpoint.
-Handles mandatory result submission.
+Callback Service — sends final results to GUVI evaluation endpoint.
 """
 
+import logging
+import time
 import httpx
-from typing import Optional
-from tenacity import retry, stop_after_attempt, wait_exponential
-from rich.console import Console
-
-from models.schemas import CallbackPayload, ExtractedIntelligence, SessionState
+from datetime import datetime
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from models.schemas import CallbackPayload, EngagementMetrics, SessionState
 from config.settings import get_settings
+from utils.rich_printer import print_callback_payload
 
-
-console = Console()
+logger = logging.getLogger(__name__)
 
 
 class CallbackService:
-    """
-    Handles the mandatory final result callback to GUVI evaluation endpoint.
-    Implements retry logic for reliability.
-    """
-    
+    """Handles sending final results to the GUVI endpoint."""
+
     def __init__(self):
-        self.settings = get_settings()
-        self.callback_url = self.settings.guvi_callback_url
-        self._client: Optional[httpx.AsyncClient] = None
-    
-    async def _get_client(self) -> httpx.AsyncClient:
-        """Get or create HTTP client."""
-        if self._client is None:
-            self._client = httpx.AsyncClient(timeout=30.0)
-        return self._client
-    
+        settings = get_settings()
+        self.callback_url = settings.guvi_callback_url
+        logger.info(f"CallbackService initialized → {self.callback_url}")
+
     @retry(
         stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10)
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        retry=retry_if_exception_type((httpx.HTTPError, httpx.TimeoutException)),
     )
-    async def send_final_result(
-        self,
-        session_id: str,
-        scam_detected: bool,
-        total_messages: int,
-        intelligence: ExtractedIntelligence,
-        agent_notes: str
-    ) -> tuple[bool, str]:
-        """
-        Send the final result to GUVI evaluation endpoint.
-        
-        Args:
-            session_id: Unique session identifier
-            scam_detected: Whether scam was confirmed
-            total_messages: Total messages exchanged
-            intelligence: Extracted intelligence data
-            agent_notes: Summary notes from the agent
-            
-        Returns:
-            True if callback was successful
-        """
-        # Build the payload
-        payload = CallbackPayload(
-            sessionId=session_id,
-            scamDetected=scam_detected,
-            totalMessagesExchanged=total_messages,
-            extractedIntelligence={
-                "bankAccounts": intelligence.bankAccounts,
-                "upiIds": intelligence.upiIds,
-                "phishingLinks": intelligence.phishingLinks,
-                "phoneNumbers": intelligence.phoneNumbers,
-                "suspiciousKeywords": intelligence.suspiciousKeywords,
-            },
-            agentNotes=agent_notes
-        )
-        
-        console.print(f"\n[bold blue]📤 Sending callback to GUVI...[/bold blue]")
-        console.print(f"   Session: {session_id}")
-        console.print(f"   Scam Detected: {scam_detected}")
-        console.print(f"   Messages: {total_messages}")
-        
+    async def send_callback(self, payload: CallbackPayload) -> str:
+        """Send final result to GUVI endpoint with retry logic."""
+        callback_start = time.time()
+        status_code = None
+
         try:
-            client = await self._get_client()
-            
-            response = await client.post(
-                self.callback_url,
-                json=payload.model_dump(),
-                headers={"Content-Type": "application/json"}
-            )
-            
-            if response.status_code in [200, 201, 202]:
-                console.print(f"[bold green]✅ Callback successful![/bold green]")
-                return True, f"Success ({response.status_code}): {response.text}"
-            else:
-                console.print(
-                    f"[bold red]❌ Callback failed: {response.status_code}[/bold red]"
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    self.callback_url,
+                    json=payload.model_dump(),
+                    headers={"Content-Type": "application/json"},
                 )
-                console.print(f"   Response: {response.text[:200]}")
-                return False, f"Failed ({response.status_code}): {response.text[:200]}"
                 
-        except httpx.TimeoutException:
-            console.print("[bold red]❌ Callback timeout[/bold red]")
-            raise
+                status_code = response.status_code
+                response_text = response.text
+
+                callback_elapsed = time.time() - callback_start
+
+                # ── Rich Print: Callback Payload ──
+                print_callback_payload(
+                    payload_dict=payload.model_dump(),
+                    elapsed_seconds=callback_elapsed,
+                    status_code=status_code,
+                )
+
+                logger.info(
+                    f"Callback sent for session {payload.sessionId}: "
+                    f"status={response.status_code}, response={response_text[:200]}"
+                )
+                return response_text
+
         except Exception as e:
-            console.print(f"[bold red]❌ Callback error: {e}[/bold red]")
+            callback_elapsed = time.time() - callback_start
+
+            # Still print what we tried to send
+            print_callback_payload(
+                payload_dict=payload.model_dump(),
+                elapsed_seconds=callback_elapsed,
+                status_code=status_code or 0,
+            )
+
+            logger.error(f"Callback failed for session {payload.sessionId}: {e}")
             raise
-    
-    async def send_from_session(self, session: SessionState) -> bool:
-        """
-        Send callback using session state data.
-        Convenience method that extracts all needed data from session.
-        
-        Args:
-            session: The session state with all engagement data
+
+    async def send_from_session(self, session: SessionState) -> str:
+        """Build callback payload from session state and send it."""
+        # Calculate engagement metrics
+        created = session.created_at
+        now = datetime.utcnow()
+        duration = (now - created).total_seconds()
+
+
+        # Use Judge's final payload if available (Strict Mode)
+        if session.final_callback_payload:
+            payload_dict = session.final_callback_payload.copy()
+            # Strict filtering for extractedIntelligence
+            if "extractedIntelligence" in payload_dict:
+                raw_intel = payload_dict["extractedIntelligence"]
+                filtered_intel = {
+                    k: v for k, v in raw_intel.items() 
+                    if k in {"bankAccounts", "upiIds", "phishingLinks", "phoneNumbers", "suspiciousKeywords"}
+                }
+                payload_dict["extractedIntelligence"] = filtered_intel
+                
+            # Ensure strict adherence to user schema (no conversationLog)
+            if "conversationLog" in payload_dict:
+                 del payload_dict["conversationLog"]
+
+        else:
+            # Fallback construction
+            verdict = session.council_verdict
+            raw_intel = session.extracted_intelligence
+            filtered_intel = {
+                k: v for k, v in raw_intel.items() 
+                if k in {"bankAccounts", "upiIds", "phishingLinks", "phoneNumbers", "suspiciousKeywords"}
+            }
             
-        Returns:
-            True if successful
-        """
-        if session.callback_sent:
-            console.print("[yellow]⚠️ Callback already sent for this session[/yellow]")
-            return True
+            payload_dict = {
+                "sessionId": session.session_id,
+                "scamDetected": session.is_scam_detected,
+                "totalMessagesExchanged": session.turn_count,
+                "extractedIntelligence": filtered_intel,
+                "agentNotes": verdict.reasoning if verdict else "No verdict available"
+            }
         
-        return await self.send_final_result(
-            session_id=session.session_id,
-            scam_detected=session.is_scam_detected,
-            total_messages=session.total_messages,
-            intelligence=session.extracted_intelligence,
-            agent_notes=session.agent_notes
-        )
-    
-    async def close(self) -> None:
-        """Close the HTTP client."""
-        if self._client:
-            await self._client.aclose()
-            self._client = None
+        # Log before sending
+        try:
+            payload = CallbackPayload(**payload_dict)
+        except Exception as e:
+            logger.error(f"Failed to validate payload: {e}")
+            # Try to send dict directly if validation fails (last resort)
+            payload = payload_dict
 
-
-# Singleton instance
-_callback_service: Optional[CallbackService] = None
-
-
-def get_callback_service() -> CallbackService:
-    """Get the callback service singleton."""
-    global _callback_service
-    if _callback_service is None:
-        _callback_service = CallbackService()
-    return _callback_service
+        return await self.send_callback(payload)
