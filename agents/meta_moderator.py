@@ -1,28 +1,18 @@
-"""
-Judge Agent — aggregates all council votes into a final verdict.
-Uses meta-llama/llama-4-scout-17b-16e-instruct on Groq.
-
-Per PRD §8: The Judge aggregates detection decisions, merges & deduplicates intelligence,
-tracks total messages, decides when engagement is complete, and constructs the final callback JSON.
-"""
-
 import json
 import logging
-from groq import AsyncGroq
-from typing import List
+import httpx
+from typing import List, Dict, Any
 from models.schemas import CouncilVote, CouncilVerdict
 from config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
+JUDGE_SYSTEM = """You are the Lead Scam Intelligence Analyst.
+Aggregate the reports from multiple AI agents to form a final verdict.
+Your output must be the FINAL callback payload for the system."""
 
-JUDGE_SYSTEM = """You are the Final Judge. Aggregate the provided 5 JSON reports into a single final JSON.
-Your goal is to synthesize the findings from these reports into a unified verdict.
-Strictly return valid JSON only."""
-
-JUDGE_PROMPT = """Here are 5 JSON reports from the detection council. Aggregate them.
-
-## AGENT REPORTS (JSON Array)
+JUDGE_PROMPT = """
+## AGENT REPORTS
 {votes_text}
 
 ## CONTEXT
@@ -30,10 +20,13 @@ Session ID: {session_id}
 Total Messages: {turn_count}
 User Message: "{message}"
 
-## MERGED INTELLIGENCE PREVIEW (Helper, you can refine this)
-{merged_intel}
+## INSTRUCTIONS
+1. Analyze the agent reports. If ANY agent detected a scam, treating it as high risk.
+2. Deduplicate and merge all 'extractedIntelligence'.
+3. Summarize 'agentNotes' into a cohesive final note.
+4. Return the FINAL JSON payload exactly as shown below.
 
-## REQUIRED OUTPUT FORMAT
+## REQUIRED JSON OUTPUT
 {{
   "sessionId": "{session_id}",
   "scamDetected": true/false,
@@ -45,95 +38,112 @@ User Message: "{message}"
     "phoneNumbers": [],
     "suspiciousKeywords": []
   }},
-  "agentNotes": "Aggregated reasoning..."
+  "agentNotes": "1-2 lines aggregated explanation of why this is a scam, based on agent reports."
 }}
 """
 
 class JudgeAgent:
-    """Aggregates council votes into final strict JSON payload."""
+    """Aggregates council votes using NVIDIA Llama 3.1 Nemotron 70B (or 49B/51B)."""
 
     def __init__(self):
         settings = get_settings()
-        self.client = AsyncGroq(api_key=settings.groq_api_key)
-        self.model = settings.groq_model_scout
+        self.model = settings.nvidia_model_judge
+        # Prefer dedicated judge key, fall back to shared NVIDIA key
+        self.api_key = settings.judge_agent_api_key or settings.nvidia_api_key
+        self.base_url = settings.nvidia_base_url
+        self.headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
 
     async def adjudication(self, message: str, votes: List[CouncilVote], session_id: str, turn_count: int) -> dict:
-        """Produce the final callback JSON."""
+        """Produce the final callback JSON using NVIDIA NIM."""
         
-        # Reconstruct the exact JSON received from each agent
-        # (CouncilVote objects are parsed from these JSONs, so we rebuild them)
-        votes_data = []
+        # Prepare inputs for the prompt
+        votes_summary = []
         for v in votes:
-            votes_data.append({
-                # "agentName": v.agent_name,  # Removed to match strict "same format" requirement
-                "sessionId": session_id,
+            votes_summary.append({
+                "agent": v.agent_name,
                 "scamDetected": v.is_scam,
-                "confidence": v.confidence,
-                "scamType": v.scam_type,
-                "totalMessagesExchanged": turn_count,
                 "extractedIntelligence": v.extracted_intelligence,
                 "agentNotes": v.reasoning
             })
             
-        votes_json = json.dumps(votes_data, indent=2)
-
-        # Helper merge for fallback or context
-        merged_intel = self._merge_agent_intelligence(votes)
+        votes_json = json.dumps(votes_summary, indent=2)
         
         prompt = JUDGE_PROMPT.format(
             session_id=session_id,
             turn_count=turn_count,
             message=message,
-            votes_text=votes_json,  # Using new variable but keep key for now -> wait, I need to change prompt key too? 
-                                    # Existing prompt expects {votes_text}. I'll pass votes_json as votes_text arg if I don't change prompt key yet.
-                                    # But I plan to change prompt key to votes_json in next step.
-                                    # For now, I'll pass votes_json as votes_text kwarg to avoid error if I run this before prompt update.
-            merged_intel=json.dumps(merged_intel)
+            votes_text=votes_json
         )
 
-        try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": JUDGE_SYSTEM},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.1,
-                response_format={"type": "json_object"}
-            )
-            
-            content = response.choices[0].message.content.strip()
-            return json.loads(content)
-            
-        except Exception as e:
-            logger.error(f"[JudgeAgent] Aggregation failed: {e}")
-            return {
-                "sessionId": session_id,
-                "scamDetected": any(v.is_scam for v in votes),
-                "totalMessagesExchanged": turn_count,
-                "extractedIntelligence": merged_intel,
-                "agentNotes": f"Fallback aggregation due to error: {str(e)[:50]}. Votes: {len(votes)}"
-            }
-
-
-
-    def _merge_agent_intelligence(self, votes: List[CouncilVote]) -> dict:
-        """Merge and deduplicate extracted intelligence from all agents."""
-        merged = {
-            "bankAccounts": set(),
-            "upiIds": set(),
-            "phishingLinks": set(),
-            "phoneNumbers": set(),
-            "suspiciousKeywords": set(),
+        payload = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": JUDGE_SYSTEM},
+                {"role": "user", "content": prompt}
+            ],
+            "max_tokens": 1024,
+            "temperature": 0.2, # Low temp for consistency
+            "top_p": 1.0,
         }
 
-        for vote in votes:
-            intel = vote.extracted_intelligence or {}
-            for key in merged:
-                items = intel.get(key, [])
-                if isinstance(items, list):
-                    for item in items:
-                        if item and str(item).lower() not in ("n/a", "none", "null", "unknown"):
-                            merged[key].add(str(item))
+        try:
+            async with httpx.AsyncClient(timeout=40.0) as client:
+                response = await client.post(
+                    f"{self.base_url}/chat/completions",
+                    headers=self.headers,
+                    json=payload,
+                )
 
-        return {k: sorted(list(v)) for k, v in merged.items()}
+                if response.status_code != 200:
+                    raise Exception(f"NVIDIA API Error {response.status_code}: {response.text}")
+
+                data = response.json()
+                content = data["choices"][0]["message"]["content"].strip()
+                
+                # Clean code blocks
+                import re
+                content = re.sub(r"```json", "", content)
+                content = re.sub(r"```", "", content).strip()
+                start = content.find("{")
+                end = content.rfind("}")
+                if start != -1 and end != -1:
+                    content = content[start:end+1]
+
+                return json.loads(content)
+
+        except Exception as e:
+            logger.error(f"[JudgeAgent] Adjudication failed: {e}")
+            # Fallback local aggregation
+            return self._fallback_aggregation(votes, session_id, turn_count)
+
+    def _fallback_aggregation(self, votes: List[CouncilVote], session_id: str, turn_count: int) -> dict:
+        """Fallback logic if LLM fails."""
+        scam_votes = [v for v in votes if v.is_scam]
+        is_scam = len(scam_votes) > 0 # High sensitivity: if any say scam, it's scam
+        
+        merged_intel = {
+            "bankAccounts": [], "upiIds": [], "phishingLinks": [], 
+            "phoneNumbers": [], "suspiciousKeywords": []
+        }
+        
+        # Simple merge
+        for v in votes:
+            intel = v.extracted_intelligence or {}
+            for k, val in intel.items():
+                if k in merged_intel and isinstance(val, list):
+                    merged_intel[k].extend(val)
+        
+        # Deduplicate
+        for k in merged_intel:
+            merged_intel[k] = sorted(list(set(merged_intel[k])))
+
+        return {
+            "sessionId": session_id,
+            "scamDetected": is_scam,
+            "totalMessagesExchanged": turn_count,
+            "extractedIntelligence": merged_intel,
+            "agentNotes": f"Fallback: {len(scam_votes)}/{len(votes)} agents detected scam."
+        }

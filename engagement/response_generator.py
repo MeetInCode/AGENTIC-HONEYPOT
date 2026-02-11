@@ -65,7 +65,9 @@ class ResponseGenerator:
 
     def __init__(self):
         settings = get_settings()
-        self.client = AsyncGroq(api_key=settings.groq_api_key)
+        # Prefer dedicated reply agent key, fall back to shared Groq key
+        api_key = settings.reply_agent_api_key or settings.groq_api_key
+        self.client = AsyncGroq(api_key=api_key)
         self.model = settings.groq_model_engagement  # gpt-oss-120b
         self.persona_manager = PersonaManager()
         self._fallback_idx = 0
@@ -90,7 +92,7 @@ class ResponseGenerator:
             turn_count: Current turn number for turn-adaptive guidance
 
         Returns:
-            Tuple of (response_text, persona_id_used)
+            Tuple of (response_text, persona_id_used, status)
         """
         persona_id = "ramesh_kumar"
 
@@ -100,12 +102,28 @@ class ResponseGenerator:
             response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=llm_messages,
-                temperature=0.85,  # High for human-like variation & typos
-                max_tokens=100,    # Force brevity — real people don't write essays in SMS
-                top_p=0.92,        # Slight nucleus sampling for natural word choice
+                temperature=0.7,   # Balanced for Llama 3.3 coherence + creativity
+                max_tokens=200,    # Increased for JSON overhead
+                top_p=0.9,         # Standard optimized nucleus sampling
+                response_format={"type": "json_object"},
             )
 
-            reply = response.choices[0].message.content.strip()
+            import json
+            content = response.choices[0].message.content.strip()
+            try:
+                data = json.loads(content)
+                status = data.get("status", "failure")
+                reply = data.get("reply")
+            except json.JSONDecodeError:
+                logger.error(f"Failed to parse JSON response: {content}")
+                # Fallback to success with content as reply if it looks like a message, or failure
+                # Assuming failure if JSON is broken is safer for this requirement
+                status = "failure"
+                reply = None
+
+            if status == "failure" or not reply:
+                logger.info("Agent decided NOT to reply (status=failure)")
+                return None, persona_id, "failure"
 
             # Strip any quotation marks the LLM might wrap around the response
             if reply.startswith('"') and reply.endswith('"'):
@@ -128,11 +146,11 @@ class ResponseGenerator:
             logger.info(
                 f"Generated response ({len(reply)} chars) as '{self.persona_manager.get_persona_name()}'"
             )
-            return reply, persona_id
+            return reply, persona_id, "success"
 
         except Exception as e:
             logger.error(f"Response generation failed: {e}")
-            return self._get_fallback(), persona_id
+            return self._get_fallback(), persona_id, "success" # Fallback is usually success? Or should we fail? Default to success for robustness.
 
     def _build_messages(
         self,
@@ -151,7 +169,25 @@ class ResponseGenerator:
         else:
             system_prompt += LATE_TURN_GUIDANCE
 
-        messages = [{"role": "system", "content": system_prompt}]
+        # JSON Format Instruction
+        json_instruction = """
+CRITICAL FORMAT INSTRUCTION:
+You must return a valid JSON object.
+Analyze if the incoming message is a likely scam or worth engaging as a honeypot.
+- If YES (engage):
+  {
+    "status": "success",
+    "reply": "your conversation response here as Ramesh"
+  }
+- If NO (do not engage/irrelevant/not a scam):
+  {
+    "status": "failure",
+    "reply": null
+  }
+
+Do not include any text outside the JSON object.
+"""
+        messages = [{"role": "system", "content": system_prompt + "\n" + json_instruction}]
 
         # Add conversation history (last 8 messages — keeps context tight)
         recent_history = history[-8:] if len(history) > 8 else history

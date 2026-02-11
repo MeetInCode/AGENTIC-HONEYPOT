@@ -22,6 +22,7 @@ class GroqVoter:
     def __init__(self, model_name: str, api_key: str = None):
         settings = get_settings()
         self.model = model_name
+        # Prefer per-agent key if provided, otherwise fall back to shared Groq key
         self.api_key = api_key or settings.groq_api_key
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -87,22 +88,29 @@ class LlamaScoutVoter(GroqVoter):
     
     def __init__(self):
         settings = get_settings()
-        super().__init__(settings.groq_model_scout)
+        super().__init__(
+            settings.groq_model_scout,
+            api_key=settings.council_llama_scout_api_key or settings.groq_api_key,
+        )
 
     def _build_prompt(self, message: str, context: str, session_id: str, turn_count: int) -> str:
         return f"""
-You are LlamaScout, analyzing conversation realism.
-Is this a bot/scammer or a human?
+You are LlamaScout, a high-speed conversation realism and anomaly detector.
 
-Context: {context}
-Message: "{message}"
+Goal: Decide if this looks like a SCAMMER conversation and extract any concrete details that help identify or track them.
 
-Return EXACTLY this JSON structure:
+Context:
+{context}
+
+Current scammer message:
+"{message}"
+
+Respond ONLY with a single valid JSON object in this exact shape:
 {{
   "sessionId": "{session_id}",
   "scamDetected": true/false,
   "confidence": 0.0-1.0,
-  "scamType": "type",
+  "scamType": "bot_like_scam" | "human_scammer" | "benign",
   "totalMessagesExchanged": {turn_count},
   "extractedIntelligence": {{
     "bankAccounts": [],
@@ -111,7 +119,7 @@ Return EXACTLY this JSON structure:
     "phoneNumbers": [],
     "suspiciousKeywords": []
   }},
-  "agentNotes": "Realism analysis reasoning"
+  "agentNotes": "1-2 lines analysing realism and why this does or does not look like a scammer."
 }}
 """
 
@@ -120,24 +128,31 @@ class GptOssVoter(GroqVoter):
     """GPT-OSS (Scam Strategy Specialist)."""
     
     def __init__(self):
-        # Fallback to defaults if env not set, but orchestrator sets it
         settings = get_settings()
         # Use gpt-oss-120b for strategy unless env overrides
-        super().__init__("openai/gpt-oss-120b") 
+        super().__init__(
+            "openai/gpt-oss-120b",
+            api_key=settings.council_gpt_oss_api_key or settings.groq_api_key,
+        )
 
     def _build_prompt(self, message: str, context: str, session_id: str, turn_count: int) -> str:
         return f"""
-You are a Criminology Expert analyzing scam strategies.
+You are a criminology and cyber-fraud expert specialising in scam playbooks used in India (fake KYC, bank freeze, UPI refund, lottery, RBI/income-tax threats, job scams).
 
-Context: {context}
-Message: "{message}"
+Task: Identify which scam strategy is being used and pull out every useful intelligence fragment.
 
-Return JSON:
+Context:
+{context}
+
+Current scammer message:
+"{message}"
+
+Respond ONLY with a single valid JSON object in this exact shape:
 {{
   "sessionId": "{session_id}",
   "scamDetected": true/false,
   "confidence": 0.0-1.0,
-  "scamType": "type",
+  "scamType": "bank_fraud" | "upi_refund" | "lottery_reward" | "kyc_update" | "impersonation" | "job_scam" | "other",
   "totalMessagesExchanged": {turn_count},
   "extractedIntelligence": {{
     "bankAccounts": [],
@@ -146,6 +161,6 @@ Return JSON:
     "phoneNumbers": [],
     "suspiciousKeywords": []
   }},
-  "agentNotes": "Strategy analysis reasoning"
+  "agentNotes": "1-2 lines summarising the scam strategy and key red flags."
 }}
 """

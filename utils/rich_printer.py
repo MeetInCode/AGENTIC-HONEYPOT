@@ -264,13 +264,18 @@ def print_callback_payload(payload: dict, elapsed: float, status: int = 200):
     )
 
 
-def print_pipeline_summary(total_elapsed: float, session_id: str, scam: bool):
+def print_pipeline_summary(total_elapsed: float, session_id: str, scam: bool, note: Optional[str] = None):
     """Print a final one-line summary of the reply path."""
     icon = "🔴" if scam else "🟢"
     style = "red" if scam else "green"
+    
+    text = f"{icon}  Reply sent for {session_id} in {total_elapsed:.2f}s"
+    if note:
+        text += f" | {note}"
+
     console.print()
     console.rule(
-        f"[bold {style}]{icon}  Reply sent for {session_id} in {total_elapsed:.2f}s[/bold {style}]",
+        f"[bold {style}]{text}[/bold {style}]",
         style=style,
     )
     console.print()

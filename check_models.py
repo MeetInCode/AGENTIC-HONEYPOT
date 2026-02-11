@@ -69,7 +69,7 @@ async def test_model_connectivity():
     # --- Test NVIDIA Models ---
     nvidia_models = [
         ("NVIDIA Mistral", settings.nvidia_model_mistral),
-        ("NVIDIA DeepSeek", settings.nvidia_model_deepseek),
+        ("NVIDIA Multilingual Safety", settings.nvidia_model_safety_multilingual),
         ("NVIDIA General", settings.nvidia_model_general),
     ]
     

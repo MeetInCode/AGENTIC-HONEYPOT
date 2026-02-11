@@ -24,7 +24,7 @@ class HoneypotRequest(BaseModel):
 
 class HoneypotResponse(BaseModel):
     sessionId: str
-    reply: str
+    reply: Optional[str] = None
     scamDetected: bool
     confidence: float
 
@@ -78,7 +78,10 @@ class SessionState(BaseModel):
     agent_responses: List[str] = Field(default_factory=list)
     callback_sent: bool = False
     council_verdict: Optional[CouncilVerdict] = None
-    final_callback_payload: Optional[Dict[str, Any]] = None  # Judge compiled payload
+    # All raw council votes across the session (for Judge aggregation)
+    council_votes: List[CouncilVote] = Field(default_factory=list)
+    # Judge-composed final callback payload (strict GUVI schema)
+    final_callback_payload: Optional[Dict[str, Any]] = None
 
 # ─── 3. Callback ──────────────────────────────────────────────────
 
@@ -93,5 +96,4 @@ class CallbackPayload(BaseModel):
     scamDetected: bool
     totalMessagesExchanged: int
     extractedIntelligence: ExtractedIntelligence
-    agentNotes: str
     agentNotes: str

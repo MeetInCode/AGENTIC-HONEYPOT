@@ -16,10 +16,14 @@ from typing import Optional
 from datetime import datetime
 
 from models.schemas import (
-    HoneypotRequest, HoneypotResponse, SessionState, CouncilVerdict
+    HoneypotRequest,
+    HoneypotResponse,
+    SessionState,
+    CouncilVerdict,
 )
 from agents.detection_council import DetectionCouncil
 from engagement.response_generator import ResponseGenerator
+from agents.meta_moderator import JudgeAgent
 from services.session_manager import SessionManager
 from services.callback_service import CallbackService
 from services.intelligence_extractor import IntelligenceExtractor
@@ -46,6 +50,7 @@ class HoneypotOrchestrator:
             inactivity_timeout=settings.inactivity_timeout_seconds
         )
         self.callback_service = CallbackService()
+        self.judge_agent = JudgeAgent()
         self.intelligence_extractor = IntelligenceExtractor()
         self.max_turns = settings.max_conversation_turns
         self.confidence_threshold = settings.scam_confidence_threshold
@@ -106,7 +111,7 @@ class HoneypotOrchestrator:
         # ══════════════════════════════════════════════════════════════
         response_start = time.time()
 
-        reply, persona_id = await self.response_generator.generate(
+        reply, persona_id, status = await self.response_generator.generate(
             message=request.message.text,
             conversation_history=session.messages,
             scam_type=session.scam_type,        # may be "unknown" on first turn
@@ -114,6 +119,34 @@ class HoneypotOrchestrator:
             turn_count=session.turn_count,
         )
         session.persona_id = persona_id
+
+        if status == "failure":
+            logger.info(f"ResponseGenerator status=failure for {request.sessionId} — skipping reply and intel.")
+            
+            # We do NOT append to session.agent_responses or session.messages if we didn't reply?
+            # Or should we record that we didn't reply?
+            # For now, let's just return.
+            
+            response_elapsed = time.time() - response_start
+            
+            # Return response with no reply
+            response_obj = HoneypotResponse(
+                sessionId=request.sessionId,
+                reply=None,
+                scamDetected=session.is_scam_detected,
+                confidence=session.scam_confidence,
+            )
+            
+            # ── Rich Print: Skipped Summary ──
+            print_pipeline_summary(
+                total_elapsed=response_elapsed,
+                session_id=request.sessionId,
+                scam=session.is_scam_detected,
+                note="Skipped (Agent Status: Failure)"
+            )
+            return response_obj
+
+        # If success, reply is not None
         session.agent_responses.append(reply)
 
         response_elapsed = time.time() - response_start
@@ -137,11 +170,16 @@ class HoneypotOrchestrator:
 
         # ══════════════════════════════════════════════════════════════
         # INTEL PATH (async, background) — PRD §6
-        # Council voting, intelligence extraction, and callback all
-        # happen AFTER the reply is returned. Never blocks reply.
+        # Council voting, intelligence extraction, and final Judge
+        # aggregation are completely decoupled from the reply latency.
+        # This pipeline never blocks the reply agent.
         # ══════════════════════════════════════════════════════════════
         asyncio.create_task(
-            self._run_intel_pipeline(request.sessionId, request.message.text, request.conversationHistory)
+            self._run_intel_pipeline(
+                request.sessionId,
+                request.message.text,
+                request.conversationHistory,
+            )
         )
 
         # Build response
@@ -181,55 +219,59 @@ class HoneypotOrchestrator:
             # Build context for detection
             context = self._build_context(history)
 
-            # ── Step 1: Detection Council ──
-            # (rich printing of votes + verdict happens inside detection_council.analyze)
-            verdict = await self.detection_council.analyze(
+            # ── Step 1: Detection Council (5 independent LLM agents) ──
+            # Rich printing of votes + verdict happens inside detection_council.analyze
+            votes, verdict = await self.detection_council.analyze(
                 message=message,
                 context=context,
                 session_id=session_id,
                 turn_count=session.turn_count,
             )
 
-            # Update session with detection results
+            # Persist raw council votes for Judge aggregation at callback time
+            session.council_votes.extend(votes)
+
+            # Update session with lightweight verdict (for in-API telemetry)
             if verdict.is_scam and verdict.confidence >= self.confidence_threshold:
                 session.is_scam_detected = True
                 session.scam_confidence = verdict.confidence
                 session.scam_type = verdict.scam_type
                 session.council_verdict = verdict
 
-            # ── Step 2: Intelligence Extraction ──
+            # ── Step 2: Intelligence Extraction (regex + LLM) ──
             intel = await self.intelligence_extractor.extract(session.messages)
 
-            # Merge with existing intelligence
+            # Merge with existing intelligence (deduplicated lists)
             for key, values in intel.items():
                 if isinstance(values, list):
                     existing = session.extracted_intelligence.get(key, [])
                     merged = list(set(existing + values))
                     session.extracted_intelligence[key] = merged
 
-            self.session_manager.update_session(session)
-
-            # ── Step 3: Check if callback should fire ──
-            if session.turn_count >= self.max_turns and not session.callback_sent:
-                logger.info(f"Max turns reached for {session_id} — sending callback")
-                await self._send_callback(session_id)
+            # Intentionally do NOT reset the inactivity timer here.
+            # The 5-second window is measured from the last incoming request
+            # (reply agent path), not from background intel updates. Session
+            # state is already held by reference inside SessionManager.
 
         except Exception as e:
             logger.error(f"Intel pipeline error for {session_id}: {e}")
 
     async def _on_inactivity_timeout(self, session_id: str):
-        """Called when a session's inactivity timer fires (30s no messages)."""
-        logger.info(f"Inactivity timeout for session {session_id}")
+        """
+        Called when a session's inactivity timer fires (no new messages within
+        the configured window, default 5 seconds).
+        """
+        logger.info(f"Inactivity timeout for session {session_id} — triggering Judge + callback")
         await self._send_callback(session_id)
 
     async def _send_callback(self, session_id: str):
-        """Send the final callback for a session."""
+        """Run Judge aggregation and send the final callback for a session."""
         session = self.session_manager.get_session(session_id)
         if not session or session.callback_sent:
             return
 
         try:
-            # Final intelligence extraction before callback
+            # One more intelligence sweep over full conversation (best-effort enrichment)
             if session.messages:
                 intel = await self.intelligence_extractor.extract(session.messages)
                 for key, values in intel.items():
@@ -237,6 +279,33 @@ class HoneypotOrchestrator:
                         existing = session.extracted_intelligence.get(key, [])
                         merged = list(set(existing + values))
                         session.extracted_intelligence[key] = merged
+
+            # ── Judge LLM: build final callback JSON from all council votes ──
+            try:
+                last_message_text = session.messages[-1]["text"] if session.messages else ""
+            except Exception:
+                last_message_text = ""
+
+            votes = session.council_votes or []
+            if votes:
+                judge_payload = await self.judge_agent.adjudication(
+                    message=last_message_text,
+                    votes=votes,
+                    session_id=session.session_id,
+                    turn_count=session.turn_count,
+                )
+            else:
+                judge_payload = None
+
+            # Merge Judge's extractedIntelligence with locally accumulated intel
+            if judge_payload:
+                merged_intel = dict(judge_payload.get("extractedIntelligence", {}))
+                for key, values in session.extracted_intelligence.items():
+                    if isinstance(values, list):
+                        existing = merged_intel.get(key, [])
+                        merged_intel[key] = list(set(existing + values))
+                judge_payload["extractedIntelligence"] = merged_intel
+                session.final_callback_payload = judge_payload
 
             # (rich printing of callback payload happens inside callback_service)
             response = await self.callback_service.send_from_session(session)

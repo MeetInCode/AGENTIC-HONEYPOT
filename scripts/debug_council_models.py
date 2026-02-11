@@ -8,7 +8,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import asyncio
 import logging
-from agents.nvidia_agents import NemotronVoter, DeepSeekVoter, MinimaxVoter
+from agents.nvidia_agents import NemotronVoter, MultilingualSafetyVoter, MinimaxVoter
 from engagement.response_generator import ResponseGenerator
 
 # Configure logging to show everything
@@ -29,7 +29,7 @@ async def debug_agents():
         print(f"ERROR: {e}")
 
     print("\n" + "="*50)
-    print("🤖 DEBUG: NEMOTRON VOTER")
+    print("🤖 DEBUG: NEMOTRON SAFETY VOTER")
     print("="*50)
     try:
         voter = NemotronVoter()
@@ -44,10 +44,10 @@ async def debug_agents():
         print(f"ERROR: {e}")
 
     print("\n" + "="*50)
-    print("🤖 DEBUG: DEEPSEEK VOTER")
+    print("🤖 DEBUG: MULTILINGUAL SAFETY VOTER")
     print("="*50)
     try:
-        voter = DeepSeekVoter()
+        voter = MultilingualSafetyVoter()
         result = await voter.vote(message, context, "debug-session", 1)
         print(f"\n[Parsed Result]:\nScam: {result.is_scam}\nConf: {result.confidence}\nReason: {result.reasoning}")
         print(f"Extracted: {result.extracted_intelligence}")
@@ -64,6 +64,8 @@ async def debug_agents():
         print(f"Extracted: {result.extracted_intelligence}")
     except Exception as e:
         print(f"ERROR: {e}")
+        import traceback
+        traceback.print_exc()
 
 if __name__ == "__main__":
     asyncio.run(debug_agents())

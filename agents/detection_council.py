@@ -1,140 +1,116 @@
 """
-Detection Council — orchestrates 5 voters + 1 judge.
+Detection Council — orchestrates the 5 LLM council members.
 
-Voters (run in parallel):
-  1. NemotronVoter   (NVIDIA)
-  2. DeepSeekVoter   (NVIDIA)
-  3. MinimaxVoter    (NVIDIA)
-  4. LlamaScoutVoter (Groq)
-  5. GptOssVoter     (Groq)
+Each council member is a fully independent agent:
+  1. NemotronVoter            (NVIDIA safety / bank fraud)
+  2. MultilingualSafetyVoter  (NVIDIA multilingual safety)
+  3. MinimaxVoter             (NVIDIA linguistic patterns)
+  4. LlamaScoutVoter          (Groq realism / anomaly)
+  5. GptOssVoter              (Groq scam-playbook strategy)
 
-Judge:
-  JudgeAgent (Groq, llama-4-scout)
+All 5 run in parallel for every message. None of them wait on each other.
+Only the Judge LLM (separate agent) aggregates their outputs at callback time.
 """
 
 import asyncio
 import logging
 import time
-from typing import List
+from typing import List, Tuple
+
 from models.schemas import CouncilVote, CouncilVerdict
-from agents.nvidia_agents import NemotronVoter, DeepSeekVoter, MinimaxVoter
+from agents.nvidia_agents import NemotronVoter, MultilingualSafetyVoter, MinimaxVoter
 from agents.groq_agents import LlamaScoutVoter, GptOssVoter
-from agents.meta_moderator import JudgeAgent
-from utils.rich_printer import print_council_votes, print_judge_verdict
+from utils.rich_printer import print_council_votes
 
 logger = logging.getLogger(__name__)
 
 
 class DetectionCouncil:
-    """Runs 5 detection voters in parallel, then passes results to a judge."""
+    """Runs the 5 detection voters in parallel and returns their votes + a lightweight verdict."""
 
     def __init__(self):
-        # Initialize all voters
+        # Initialize all voters (independent agents)
         self.voters = [
             NemotronVoter(),
-            DeepSeekVoter(),
+            MultilingualSafetyVoter(),
             MinimaxVoter(),
             LlamaScoutVoter(),
             GptOssVoter(),
         ]
-        self.judge = JudgeAgent()
         logger.info(f"Detection Council initialized with {len(self.voters)} voters")
 
-    async def analyze(self, message: str, context: str = "No prior context", session_id: str = "unknown", turn_count: int = 0) -> CouncilVerdict:
+    async def analyze(
+        self,
+        message: str,
+        context: str = "No prior context",
+        session_id: str = "unknown",
+        turn_count: int = 0,
+    ) -> Tuple[List[CouncilVote], CouncilVerdict]:
         """
-        Run all voters in parallel, collect votes, and pass to judge.
-        
-        Args:
-            message: The incoming message text to analyze
-            context: Summary of conversation history
-            session_id: The active session ID
-            turn_count: Current conversation turn
-            
-        Returns:
-            CouncilVerdict with final scam determination
+        Run all 5 voters fully in parallel and return:
+          - the raw list of CouncilVote objects (per-agent intelligence)
+          - an aggregated CouncilVerdict (simple majority / max-confidence merge)
+
+        No LLM waits on another here — asyncio.gather is used to fan out calls.
         """
         start_time = time.time()
 
-        # Run all voters in parallel
-        vote_tasks = [voter.vote(message, context, session_id, turn_count) for voter in self.voters]
-        votes: List[CouncilVote] = await asyncio.gather(*vote_tasks, return_exceptions=True)
+        # Fan out to all council members concurrently
+        vote_tasks = [
+            voter.vote(message, context, session_id, turn_count) for voter in self.voters
+        ]
+        results = await asyncio.gather(*vote_tasks, return_exceptions=True)
 
-        # Filter out exceptions, keep valid votes
-        valid_votes = []
-        for i, vote in enumerate(votes):
-            if isinstance(vote, Exception):
-                logger.error(f"Voter {self.voters[i].__class__.__name__} failed: {vote}")
-                # Create a fallback abstain vote
-                valid_votes.append(CouncilVote(
-                    agent_name=self.voters[i].__class__.__name__,
-                    is_scam=False,
-                    confidence=0.0,
-                    reasoning=f"Voter error: {str(vote)[:100]}",
-                ))
+        votes: List[CouncilVote] = []
+        for i, res in enumerate(results):
+            if isinstance(res, Exception):
+                logger.error(f"Voter {self.voters[i].__class__.__name__} failed: {res}")
+                votes.append(
+                    CouncilVote(
+                        agent_name=self.voters[i].__class__.__name__,
+                        is_scam=False,
+                        confidence=0.0,
+                        reasoning=f"Voter error: {str(res)[:100]}",
+                        scam_type="error",
+                        extracted_intelligence={},
+                    )
+                )
             else:
-                valid_votes.append(vote)
+                votes.append(res)
 
         voting_elapsed = time.time() - start_time
 
         # ── Rich Print: Council Votes ──
-        print_council_votes(valid_votes, voting_elapsed)
+        print_council_votes(votes, voting_elapsed)
 
-        # Pass to judge for final verdict
-        # 3. Judge Aggregation (Simulated for speed or LLM)
-        try:
-            # New strict JSON aggregation
-            final_payload = await self.judge.adjudication(message, votes, session_id, turn_count)
-            
-            # Store in session state
-            session_state.final_callback_payload = final_payload
-            
-            # Update session state with values from the payload for compatibility
-            session_state.is_scam_detected = final_payload.get("scamDetected", False)
-            session_state.scam_confidence = 1.0 if session_state.is_scam_detected else 0.0 # Confidence not in strict payload?
-            # Actually strict payload doesn't have 'confidence' field in user request!
-            # User request: sessionId, scamDetected, totalMessagesExchanged, extractedIntelligence, agentNotes.
-            # So session_state.scam_confidence might be undefined/dummy.
-            
-            # Create a dummy verdict object for compatibility if needed elsewhere
-            session_state.council_verdict = CouncilVerdict(
-                is_scam=session_state.is_scam_detected,
-                confidence=0.99 if session_state.is_scam_detected else 0.0,
-                scam_type="aggregated",
-                reasoning=final_payload.get("agentNotes", ""),
-                votes=votes,
-                scam_votes=sum(1 for v in votes if v.is_scam),
-                voter_count=len(votes)
-            )
-            
-            logger.info(f"👨‍⚖️ Council Verdict: SCAM={session_state.is_scam_detected}")
+        # Lightweight, non-LLM aggregation for quick state updates
+        scam_votes = [v for v in votes if v.is_scam]
+        is_scam = len(scam_votes) > 0
+        voter_count = len(votes)
+        max_conf = max((v.confidence for v in votes), default=0.0)
+        scam_type = scam_votes[0].scam_type if scam_votes else "unknown"
+        reasoning = (
+            f"{len(scam_votes)}/{voter_count} council members flagged this as scam."
+            if voter_count > 0
+            else "No council votes available."
+        )
 
-        except Exception as e:
-            logger.error(f"Judge error: {e}")
-            # Fallback verdict in case of judge failure
-            session_state.council_verdict = CouncilVerdict(
-                is_scam=False,
-                confidence=0.0,
-                scam_type="error",
-                reasoning=f"Judge adjudication failed: {str(e)}",
-                votes=votes,
-                scam_votes=sum(1 for v in votes if v.is_scam),
-                voter_count=len(votes)
-            )
-            session_state.is_scam_detected = False
-            session_state.scam_confidence = 0.0
-            session_state.final_callback_payload = {
-                "sessionId": session_id,
-                "scamDetected": False,
-                "totalMessagesExchanged": turn_count,
-                "extractedIntelligence": "Judge adjudication failed.",
-                "agentNotes": f"Judge adjudication failed: {str(e)}"
-            }
+        verdict = CouncilVerdict(
+            is_scam=is_scam,
+            confidence=max_conf,
+            scam_type=scam_type,
+            scam_votes=len(scam_votes),
+            voter_count=voter_count,
+            reasoning=reasoning,
+            votes=votes,
+        )
 
         total_elapsed = time.time() - start_time
         logger.info(
-            f"Council complete: scam={session_state.council_verdict.is_scam}, conf={session_state.council_verdict.confidence:.2f}, "
-            f"type={session_state.council_verdict.scam_type}, votes={session_state.council_verdict.scam_votes}/{session_state.council_verdict.voter_count}, "
+            f"Council complete: scam={verdict.is_scam}, conf={verdict.confidence:.2f}, "
+            f"type={verdict.scam_type}, votes={verdict.scam_votes}/{verdict.voter_count}, "
             f"total_time={total_elapsed:.2f}s"
         )
 
-        return session_state.council_verdict
+        return votes, verdict
+

@@ -14,7 +14,7 @@ import httpx
 from typing import Dict, Any, Optional
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from models.schemas import CouncilVote, ExtractedIntelligence, AgentOutput
+from models.schemas import CouncilVote
 from config.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -25,6 +25,7 @@ class NvidiaVoter:
     def __init__(self, model_name: str, api_key: str = None, base_url: str = None):
         settings = get_settings()
         self.model = model_name
+        # Prefer per-agent key if provided, otherwise fall back to shared NVIDIA key
         self.api_key = api_key or settings.nvidia_api_key
         self.base_url = base_url or settings.nvidia_base_url
         self.headers = {
@@ -55,16 +56,9 @@ class NvidiaVoter:
         """Override in subclasses."""
         raise NotImplementedError
 
-    async def _call_nvidia(self, prompt: str, session_id: str) -> Dict[str, Any]:
-        """Call NVIDIA NIM API."""
-        payload = {
-            "model": self.model,
-            "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": 4096,
-            "top_p": 1.0,
-        }
-
-        async with httpx.AsyncClient(timeout=30.0) as client:
+    async def _execute_call(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute the HTTP call to NVIDIA NIM."""
+        async with httpx.AsyncClient(timeout=35.0) as client:
             response = await client.post(
                 f"{self.base_url}/chat/completions",
                 headers=self.headers,
@@ -81,9 +75,10 @@ class NvidiaVoter:
             
             # Clean markdown code blocks if present
             content = content.strip()
-            logger.info(f"[{self.__class__.__name__}] Raw Content: {content}")
             import re
-            # Remove <think>...</think> blocks from DeepSeek R1
+            content = re.sub(r"```json", "", content)
+            content = re.sub(r"```", "", content)
+            # Remove <think> blocks
             content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
             
             # Find JSON object
@@ -102,87 +97,174 @@ class NvidiaVoter:
                     return json.loads(repaired)
                 except json.JSONDecodeError:
                     logger.error(f"[{self.__class__.__name__}] Failed to parse JSON: {content[:200]}")
-                    raise Exception(f"Invalid JSON response from model: {content[:200]}...")
+                    raise Exception(f"Invalid JSON response: {content[:100]}...")
 
-    def _repair_json(self, content: str) -> str:
-        """Attempt to repair truncated JSON."""
-        content = content.strip()
-        # Close unclosed string if it looks like a value or key
-        if content.count('"') % 2 != 0:
-            content += '"'
-        
-        # Balance brackets/braces (simple heuristic)
-        open_sq = content.count('[')
-        close_sq = content.count(']')
-        content += ']' * (open_sq - close_sq)
-        
-        open_br = content.count('{')
-        close_br = content.count('}')
-        content += '}' * (open_br - close_br)
-        
-        return content
+    async def _call_nvidia(self, prompt: str, session_id: str) -> Dict[str, Any]:
+        """Default call method - override in subclasses for custom params."""
+        payload = {
+            "model": self.model,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 4096,
+            "top_p": 1.0,
+        }
+        return await self._execute_call(payload)
 
     def _parse_response(self, data: Dict[str, Any]) -> CouncilVote:
-        """Convert strict JSON to CouncilVote."""
-        # Use Pydantic to validate against strict schema if possible, 
-        # but for robustness we manually map to CouncilVote
-        
-        # Check strict fields from user requirement
-        # "scamDetected", "confidence" (not in strict json, but we need it. 
-        # Wait, user json didn't have confidence. I'll infer it or ask for it in prompt hiddenly?
-        # User said "strictly return this json only".
-        # But CouncilVote needs confidence. 
-        # I will ASK for confidence in the prompt as an extra field or just map scamDetected to 1.0/0.0?
-        # NO, I will add confidence to the prompt requirement even if user didn't list it in the example?
-        # User said "strictly return THIS json".
-        # "this json" has: sessionId, scamDetected, totalMessagesExchanged, extractedIntelligence, agentNotes.
-        # It does NOT have confidence.
-        # I'll default confidence to 1.0 if scamDetected=True, else 0.0? Or maybe agentNotes implies it?
-        # Actually, standard is to include confidence. I'll add confidence to the specific prompt instructions
-        # but keep the structure close.
-        # OR I'll add `confidence` to the prompt's JSON structure and hope user doesn't mind the one extra field
-        # since the system implicitly needs it.
-        # Without confidence, the Judge is flying blind on "how sure" they are.
-        # I'll add "confidence": <float 0-1> to the JSON instructions.
-        
-        is_scam = data.get("scamDetected", False)
-        confidence = data.get("confidence", 0.9 if is_scam else 0.0) # Fallback if missing
-        
-        extracted = data.get("extractedIntelligence", {})
-        
+        """
+        Convert model JSON to CouncilVote.
+
+        If the model omits fields or returns a very weak answer, we:
+          - normalise extractedIntelligence
+          - auto-flag as scam when any strong intelligence is present
+          - generate a sensible default agentNotes
+        """
+        extracted = data.get("extractedIntelligence", {}) or {}
+        # Normalize intelligence keys to the required schema as lists
+        normalized_extracted = {
+            "bankAccounts": extracted.get("bankAccounts", []) or [],
+            "upiIds": extracted.get("upiIds", []) or [],
+            "phishingLinks": extracted.get("phishingLinks", []) or [],
+            "phoneNumbers": extracted.get("phoneNumbers", []) or [],
+            "suspiciousKeywords": extracted.get("suspiciousKeywords", []) or [],
+        }
+
+        # Heuristic: if any intelligence was actually extracted, treat as likely scam
+        has_intel = any(normalized_extracted[key] for key in normalized_extracted)
+
+        raw_scam = data.get("scamDetected")
+        if raw_scam is None:
+            is_scam = has_intel
+        else:
+            is_scam = bool(raw_scam)
+
+        # Confidence is required; if missing, infer a conservative default.
+        if "confidence" in data:
+            confidence = float(data.get("confidence", 0.0) or 0.0)
+        else:
+            # If we auto-flagged due to strong intelligence, still give non-zero confidence
+            confidence = 0.9 if is_scam else (0.2 if has_intel else 0.0)
+
+        # Agent notes — fall back to an explanation instead of "No notes provided"
+        agent_notes = data.get("agentNotes")
+        if not agent_notes:
+            if has_intel:
+                agent_notes = (
+                    "Model did not provide notes; auto-flagged as scam due to extracted intelligence "
+                    f"(accounts={len(normalized_extracted['bankAccounts'])}, "
+                    f"upiIds={len(normalized_extracted['upiIds'])}, "
+                    f"links={len(normalized_extracted['phishingLinks'])}, "
+                    f"phones={len(normalized_extracted['phoneNumbers'])})."
+                )
+            else:
+                agent_notes = "Model did not provide notes and no clear scam indicators were extracted."
+
+        scam_type = str(
+            data.get(
+                "scamType",
+                "scam" if is_scam else ("intel_only" if has_intel else "safe"),
+            )
+        )
+
         return CouncilVote(
             agent_name=self.__class__.__name__,
             is_scam=is_scam,
-            confidence=float(confidence),
-            reasoning=data.get("agentNotes", "No notes provided"),
-            scam_type="scam" if is_scam else "safe", # We might need to extract type from notes or add field
-            extracted_intelligence=extracted,
+            confidence=confidence,
+            reasoning=agent_notes,
+            scam_type=scam_type,
+            extracted_intelligence=normalized_extracted,
         )
 
 
 class NemotronVoter(NvidiaVoter):
-    """NVIDIA Nemotron-4-340B (Reasoning Specialist)."""
+    """NVIDIA Nemotron Safety 8B (Safety Specialist)."""
     
     def __init__(self):
         settings = get_settings()
-        super().__init__(settings.nvidia_model_nemotron)
+        super().__init__(
+            settings.nvidia_model_safety,
+            api_key=settings.council_nemotron_api_key or settings.nvidia_api_key,
+        )
+
+    async def _call_nvidia(self, prompt: str, session_id: str) -> Dict[str, Any]:
+        """Override to set safety-specific params if needed."""
+        # Safety models often prefer lower temperature
+        payload = {
+            "model": self.model,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 1024,
+            "temperature": 0.1, # Low temp for safety
+            "top_p": 1.0,
+        }
+        return await self._execute_call(payload)
 
     def _build_prompt(self, message: str, context: str, session_id: str, turn_count: int) -> str:
         return f"""
-Analyze this conversation for scam intent. Be concise. Do not repeat context.
+You are a bank fraud and phishing safety expert focused on Indian scam patterns.
+
+Task: Analyse if the SCAMMER's message is part of a financial or identity scam and extract as much concrete intelligence as possible.
 
 Context:
 {context}
 
-Message: "{message}"
+Current scammer message:
+"{message}"
 
-Return VALID JSON ONLY:
+Respond ONLY with a single valid JSON object in this exact shape:
 {{
   "sessionId": "{session_id}",
   "scamDetected": true/false,
   "confidence": 0.0-1.0,
-  "scamType": "type_or_unknown",
-  "totalMessagesExchanged": {turn_count},
+  "scamType": "bank_fraud" | "upi_scam" | "kyc_phishing" | "impersonation" | "lottery_reward" | "other",
+  "extractedIntelligence": {{
+    "bankAccounts": ["..."],
+    "upiIds": ["..."],
+    "phishingLinks": ["..."],
+    "phoneNumbers": ["..."],
+    "suspiciousKeywords": ["..."]
+  }},
+  "agentNotes": "1-2 lines explaining why this is or is not a scam, in concise analyst language."
+}}
+"""
+
+class MultilingualSafetyVoter(NvidiaVoter):
+    """NVIDIA Nemotron Multilingual Safety Guard 8B."""
+    
+    def __init__(self):
+        settings = get_settings()
+        super().__init__(
+            settings.nvidia_model_safety_multilingual,
+            api_key=settings.council_multilingual_safety_api_key or settings.nvidia_api_key,
+        )
+
+    async def _call_nvidia(self, prompt: str, session_id: str) -> Dict[str, Any]:
+        """Safety Guard specific params."""
+        payload = {
+            "model": self.model,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 1024,
+            "temperature": 0.5, # Low temp for safety
+            "top_p": 1.0,
+        }
+        return await self._execute_call(payload)
+
+    def _build_prompt(self, message: str, context: str, session_id: str, turn_count: int) -> str:
+        return f"""
+You are a multilingual fraud and safety analyst for Indian digital channels (SMS, WhatsApp, email, social).
+
+Task: Detect scams across English, Hinglish, and Indian regional languages. Capture concrete intelligence (UPI IDs, links, numbers) even if partially obfuscated.
+
+Context:
+{context}
+
+Current scammer message:
+"{message}"
+
+Respond ONLY with a single valid JSON object in this exact shape:
+{{
+  "sessionId": "{session_id}",
+  "scamDetected": true/false,
+  "confidence": 0.0-1.0,
+  "scamType": "multilingual_scam" | "social_engineering" | "phishing" | "other",
   "extractedIntelligence": {{
     "bankAccounts": [],
     "upiIds": [],
@@ -190,69 +272,49 @@ Return VALID JSON ONLY:
     "phoneNumbers": [],
     "suspiciousKeywords": []
   }},
-  "agentNotes": "Reasoning"
-}}
-"""
-
-class DeepSeekVoter(NvidiaVoter):
-    """DeepSeek-R1 (Entity Extraction Specialist)."""
-    
-    def __init__(self):
-        settings = get_settings()
-        super().__init__(settings.nvidia_model_deepseek)
-
-    def _build_prompt(self, message: str, context: str, session_id: str, turn_count: int) -> str:
-        return f"""
-You are a Forensic Data Extractor specializing in identifying scam entities.
-Analyze the message for scam indicators and extract all technical details.
-
-Session ID: {session_id}
-Total Messages: {turn_count}
-Context: {context}
-
-Message: "{message}"
-
-STRICT JSON OUTPUT REQUIRED:
-{{
-  "sessionId": "{session_id}",
-  "scamDetected": true/false,
-  "confidence": 0.0-1.0,
-  "scamType": "scam_category",
-  "totalMessagesExchanged": {turn_count},
-  "extractedIntelligence": {{
-    "bankAccounts": ["extracted_accounts"],
-    "upiIds": ["extracted_vpns"],
-    "phishingLinks": ["extracted_urls"],
-    "phoneNumbers": ["extracted_phones"],
-    "suspiciousKeywords": ["keywords_found"]
-  }},
-  "agentNotes": "Brief reasoning"
+  "agentNotes": "1-2 lines summarising multilingual safety assessment and why this is or is not a scam."
 }}
 """
 
 class MinimaxVoter(NvidiaVoter):
-    """Minimax-M2 (Linguistic Pattern Specialist)."""
+    """Minimax M2.1 (Linguistic Pattern Specialist)."""
     
     def __init__(self):
         settings = get_settings()
-        super().__init__(settings.nvidia_model_minimax)
+        super().__init__(
+            settings.nvidia_model_minimax,
+            api_key=settings.council_minimax_api_key or settings.nvidia_api_key,
+        )
+
+    async def _call_nvidia(self, prompt: str, session_id: str) -> Dict[str, Any]:
+        """Minimax parameter variations."""
+        payload = {
+            "model": self.model,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 2048,
+            "temperature": 0.7, # Slightly higher for linguistic creativity/analysis
+            "top_p": 0.9,
+        }
+        return await self._execute_call(payload)
 
     def _build_prompt(self, message: str, context: str, session_id: str, turn_count: int) -> str:
         return f"""
-You are a Linguistic Pattern Analyst. Detect scams by analyzing urgency, authority, and manipulation tactics.
+You are a linguistic forensics specialist focused on scam language: urgency, pressure, social engineering, and manipulation tactics.
 
-Session ID: {session_id}
-Total Messages: {turn_count}
+Analyse ONLY the scammer's behaviour and wording in this conversation.
 
-Message: "{message}"
+Context:
+{context}
 
-Return ONLY this JSON:
+Current scammer message:
+"{message}"
+
+Respond ONLY with a single valid JSON object in this exact shape:
 {{
   "sessionId": "{session_id}",
   "scamDetected": true/false,
   "confidence": 0.0-1.0,
-  "scamType": "scam_type",
-  "totalMessagesExchanged": {turn_count},
+  "scamType": "language_pattern_scam" | "social_engineering" | "benign",
   "extractedIntelligence": {{
     "bankAccounts": [],
     "upiIds": [],
@@ -260,6 +322,6 @@ Return ONLY this JSON:
     "phoneNumbers": [],
     "suspiciousKeywords": []
   }},
-  "agentNotes": "Linguistic analysis here"
+  "agentNotes": "1-2 lines describing the scam tactics or why the language looks safe."
 }}
 """
