@@ -54,12 +54,12 @@ class Settings(BaseSettings):
         alias="NVIDIA_MODEL_JUDGE"
     )
     nvidia_model_safety: str = Field(
-        default="nvidia/llama-3.1-nemotron-safety-guard-8b-v3",
+        default="nvidia/nvidia-nemotron-nano-9b-v2",
         alias="NVIDIA_MODEL_SAFETY",
         description="Council Voter 1 (Safety)"
     )
     nvidia_model_safety_multilingual: str = Field(
-        default="nvidia/llama-3.1-nemotron-safety-guard-8b-v3",
+        default="meta/llama-3.3-70b-instruct",
         alias="NVIDIA_MODEL_SAFETY_MULTILINGUAL",
         description="Council Voter 2 (Multilingual Safety)"
     )
