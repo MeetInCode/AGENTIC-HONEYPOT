@@ -46,10 +46,11 @@ class CallbackService:
                 callback_elapsed = time.time() - callback_start
 
                 # ── Rich Print: Callback Payload ──
+                # ── Rich Print: Callback Payload ──
                 print_callback_payload(
-                    payload_dict=payload.model_dump(),
-                    elapsed_seconds=callback_elapsed,
-                    status_code=status_code,
+                    payload=payload.model_dump(),
+                    elapsed=callback_elapsed,
+                    status=status_code,
                 )
 
                 logger.info(
@@ -62,10 +63,11 @@ class CallbackService:
             callback_elapsed = time.time() - callback_start
 
             # Still print what we tried to send
+            # Still print what we tried to send
             print_callback_payload(
-                payload_dict=payload.model_dump(),
-                elapsed_seconds=callback_elapsed,
-                status_code=status_code or 0,
+                payload=payload.model_dump(),
+                elapsed=callback_elapsed,
+                status=status_code or 0,
             )
 
             logger.error(f"Callback failed for session {payload.sessionId}: {e}")
@@ -74,7 +76,7 @@ class CallbackService:
     async def send_from_session(self, session: SessionState) -> str:
         """Build callback payload from session state and send it."""
         # Calculate engagement metrics
-        created = session.created_at
+        created = session.created_at or datetime.utcnow()
         now = datetime.utcnow()
         duration = (now - created).total_seconds()
 
@@ -82,6 +84,10 @@ class CallbackService:
         # Use Judge's final payload if available (Strict Mode)
         if session.final_callback_payload:
             payload_dict = session.final_callback_payload.copy()
+            # Ensure totalMessagesExchanged is correct (use actual message count)
+            total_msgs = len(session.messages)
+            payload_dict["totalMessagesExchanged"] = total_msgs
+            
             # Strict filtering for extractedIntelligence
             if "extractedIntelligence" in payload_dict:
                 raw_intel = payload_dict["extractedIntelligence"]
@@ -104,10 +110,13 @@ class CallbackService:
                 if k in {"bankAccounts", "upiIds", "phishingLinks", "phoneNumbers", "suspiciousKeywords"}
             }
             
+            # Calculate total messages exchanged (scammer + agent messages)
+            total_msgs = len(session.messages)
+            
             payload_dict = {
                 "sessionId": session.session_id,
                 "scamDetected": session.is_scam_detected,
-                "totalMessagesExchanged": session.turn_count,
+                "totalMessagesExchanged": total_msgs,
                 "extractedIntelligence": filtered_intel,
                 "agentNotes": verdict.reasoning if verdict else "No verdict available"
             }
@@ -117,7 +126,18 @@ class CallbackService:
             payload = CallbackPayload(**payload_dict)
         except Exception as e:
             logger.error(f"Failed to validate payload: {e}")
-            # Try to send dict directly if validation fails (last resort)
-            payload = payload_dict
+            # Build a minimal valid CallbackPayload to avoid .model_dump() crash
+            try:
+                from models.schemas import ExtractedIntelligence
+                payload = CallbackPayload(
+                    sessionId=payload_dict.get("sessionId", session.session_id),
+                    scamDetected=bool(payload_dict.get("scamDetected", False)),
+                    totalMessagesExchanged=int(payload_dict.get("totalMessagesExchanged", len(session.messages))),
+                    extractedIntelligence=ExtractedIntelligence(),
+                    agentNotes=str(payload_dict.get("agentNotes", "Payload validation fallback")),
+                )
+            except Exception as e2:
+                logger.error(f"Fallback payload construction also failed: {e2}")
+                raise e  # Re-raise original error
 
         return await self.send_callback(payload)

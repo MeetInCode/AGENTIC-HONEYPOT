@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+# Force reload
 
 # Load environment variables FIRST
 load_dotenv()
@@ -103,10 +104,25 @@ app.include_router(honeypot_router)
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", settings.port))
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=port,
-        reload=settings.debug,
-        log_level=settings.log_level.lower(),
-    )
+    workers = int(os.environ.get("WORKERS", 4))
+    
+    # Production: Use multiple workers for better concurrency
+    # Development: Single worker with reload
+    if settings.debug:
+        uvicorn.run(
+            "main:app",
+            host="0.0.0.0",
+            port=port,
+            reload=True,
+            log_level=settings.log_level.lower(),
+        )
+    else:
+        # Production mode: multiple workers for concurrent request handling
+        uvicorn.run(
+            "main:app",
+            host="0.0.0.0",
+            port=port,
+            workers=workers,
+            log_level=settings.log_level.lower(),
+            access_log=True,
+        )

@@ -5,7 +5,7 @@ PRD-aligned single endpoint with x-api-key auth.
 
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Header, status
-from models.schemas import HoneypotRequest, HoneypotResponse
+from models.schemas import HoneypotRequest, HoneypotResponse, Message, Metadata
 from core.orchestrator import HoneypotOrchestrator
 from config.settings import get_settings
 
@@ -58,20 +58,70 @@ async def process_message(
     Accepts a scam message, runs detection council,
     generates engagement reply, returns immediately.
     """
-    logger.info(
-        f"Incoming message: session={request.sessionId}, "
-        f"sender={request.message.sender}, "
-        f"text='{request.message.text[:80]}...'"
-    )
+    try:
+        logger.info(
+            f"Incoming message: session={request.sessionId}, "
+            f"sender={request.message.sender}, "
+            f"text='{request.message.text[:80]}...'"
+        )
+        
+        # Validate request
+        if not request.message.text or not request.message.text.strip():
+            logger.warning(f"Empty message text for session {request.sessionId}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Message text cannot be empty"
+            )
+        
+        if len(request.message.text) > 10000:
+            logger.warning(f"Message too long for session {request.sessionId}: {len(request.message.text)} chars")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Message text exceeds maximum length of 10000 characters"
+            )
+        
+        # Drop timestamps from the payload before it enters the core pipeline to
+        # keep downstream objects (session state + LLM prompts) as lean as possible.
+        # The external schema still accepts/validates a timestamp field, but we do
+        # not propagate those values internally.
+        sanitized_history = [
+            {
+                "sender": h.get("sender"),
+                "text": h.get("text", ""),
+            }
+            for h in (request.conversationHistory or [])
+        ]
+        sanitized_message = Message(
+            sender=request.message.sender,
+            text=request.message.text,
+            # Use a trivial placeholder; internal logic never reads this value.
+            timestamp=0,
+        )
+        sanitized_request = HoneypotRequest(
+            sessionId=request.sessionId,
+            message=sanitized_message,
+            conversationHistory=sanitized_history,
+            metadata=request.metadata,
+        )
 
-    orchestrator = get_orchestrator()
-    response = await orchestrator.process_message(request)
+        orchestrator = get_orchestrator()
+        response = await orchestrator.process_message(sanitized_request)
 
-    logger.info(
-        f"Response: session={response.sessionId}, "
-        f"scam={response.scamDetected}, "
-        f"conf={response.confidence:.2f}, "
-        f"reply='{response.reply[:60]}...'"
-    )
+        logger.info(
+            f"Response: session={response.sessionId}, "
+            f"status={response.status}, "
+            f"scamDetected={response.scamDetected}, "
+            f"confidence={response.confidence:.2f}, "
+            f"reply='{(response.reply or '')[:60]}...'"
+        )
 
-    return response
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error processing message for session {request.sessionId}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to process message"
+        )

@@ -1,26 +1,20 @@
 """
 Core Orchestrator — coordinates the entire honeypot pipeline.
 
-Architecture (PRD §2 + §5):
-  Reply Path  (SYNC)  — generate human-like reply IMMEDIATELY, return it
-  Intel Path  (ASYNC) — council detection, intelligence extraction, callback
-
-The reply is ALWAYS sent BEFORE detection, extraction, or callback logic.
-These are two independent paths that share session state.
+Flow per request:
+  1. Generate reply (llama-3.3-70b via Groq) → return to caller immediately
+  2. Background task on same worker:
+     a. Council detection (5 LLM calls in parallel via asyncio.gather)
+     b. Intelligence extraction (regex + 1 LLM call)
+     c. Judge aggregation (llama-3.3-70b via Groq)
+     d. Send callback to GUVI (once per session)
 """
 
 import asyncio
 import logging
 import time
-from typing import Optional
-from datetime import datetime
 
-from models.schemas import (
-    HoneypotRequest,
-    HoneypotResponse,
-    SessionState,
-    CouncilVerdict,
-)
+from models.schemas import HoneypotRequest, HoneypotResponse
 from agents.detection_council import DetectionCouncil
 from engagement.response_generator import ResponseGenerator
 from agents.meta_moderator import JudgeAgent
@@ -39,188 +33,104 @@ logger = logging.getLogger(__name__)
 
 
 class HoneypotOrchestrator:
-    """Central orchestrator that ties together detection, engagement, and intelligence."""
+    """Each session gets a worker. Reply returns fast, intel runs in background."""
 
     def __init__(self):
         settings = get_settings()
-        
         self.detection_council = DetectionCouncil()
         self.response_generator = ResponseGenerator()
-        self.session_manager = SessionManager(
-            inactivity_timeout=settings.inactivity_timeout_seconds
-        )
+        self.session_manager = SessionManager()
         self.callback_service = CallbackService()
         self.judge_agent = JudgeAgent()
         self.intelligence_extractor = IntelligenceExtractor()
         self.max_turns = settings.max_conversation_turns
         self.confidence_threshold = settings.scam_confidence_threshold
-
-        # Wire up inactivity timer callback
-        self.session_manager.set_callback_handler(self._on_inactivity_timeout)
-
         logger.info("HoneypotOrchestrator initialized")
 
     async def process_message(self, request: HoneypotRequest) -> HoneypotResponse:
         """
-        Process an incoming message.
-
-        Reply Path (sync):  Generate reply immediately → return to caller
-        Intel Path (async): Council → intelligence extraction → callback
+        Process a message:
+        1. Generate reply → return immediately
+        2. Fire background task: council → intel → judge → callback
         """
-        reply_start = time.time()
-
+        pipeline_start = time.time()
         session = self.session_manager.get_or_create_session(request.sessionId)
 
         # Record incoming message
         session.messages.append({
             "sender": request.message.sender,
             "text": request.message.text,
-            "timestamp": request.message.timestamp,
         })
         session.turn_count += 1
 
-        # ── Rich Print: Incoming Message (with raw JSON) ──
-        raw_request = {
-            "sessionId": request.sessionId,
-            "message": {
-                "sender": request.message.sender,
-                "text": request.message.text,
-                "timestamp": request.message.timestamp,
-            },
-            "conversationHistory": request.conversationHistory,
-            "metadata": {
-                "channel": request.metadata.channel if request.metadata else "SMS",
-                "language": request.metadata.language if request.metadata else None,
-                "locale": request.metadata.locale if request.metadata else None,
-            } if request.metadata else None,
-        }
+        # Rich print
         print_incoming_message(
             session_id=request.sessionId,
             sender=request.message.sender,
             text=request.message.text,
             turn=session.turn_count,
             channel=request.metadata.channel if request.metadata else "SMS",
-            raw_request=raw_request,
+            raw_request={"sessionId": request.sessionId, "message": {"sender": request.message.sender, "text": request.message.text}},
         )
 
-        # ══════════════════════════════════════════════════════════════
-        # REPLY PATH (sync, immediate) — PRD §5
-        # The reply is generated FIRST, independent of council voting.
-        # We always respond as the persona — the council determines
-        # scam detection in the background, but the reply doesn't wait.
-        # ══════════════════════════════════════════════════════════════
-        response_start = time.time()
-
-        reply, persona_id, status = await self.response_generator.generate(
-            message=request.message.text,
-            conversation_history=session.messages,
-            scam_type=session.scam_type,        # may be "unknown" on first turn
-            persona_id=session.persona_id,
-            turn_count=session.turn_count,
-        )
-        session.persona_id = persona_id
-
-        if status == "failure":
-            logger.info(f"ResponseGenerator status=failure for {request.sessionId} — skipping reply and intel.")
-            
-            # We do NOT append to session.agent_responses or session.messages if we didn't reply?
-            # Or should we record that we didn't reply?
-            # For now, let's just return.
-            
-            response_elapsed = time.time() - response_start
-            
-            # Return response with no reply
-            response_obj = HoneypotResponse(
-                sessionId=request.sessionId,
-                reply=None,
-                scamDetected=session.is_scam_detected,
-                confidence=session.scam_confidence,
+        # ── STEP 1: Generate Reply (fast, 1 LLM call) ──
+        reply = None
+        t0 = time.time()
+        try:
+            reply, persona_id, status = await self.response_generator.generate(
+                message=request.message.text,
+                conversation_history=session.messages,
+                scam_type=session.scam_type,
+                persona_id=session.persona_id,
+                turn_count=session.turn_count,
             )
-            
-            # ── Rich Print: Skipped Summary ──
-            print_pipeline_summary(
-                total_elapsed=response_elapsed,
-                session_id=request.sessionId,
-                scam=session.is_scam_detected,
-                note="Skipped (Agent Status: Failure)"
-            )
-            return response_obj
+            session.persona_id = persona_id
+        except Exception as e:
+            logger.error(f"Reply generation failed: {e}", exc_info=True)
 
-        # If success, reply is not None
-        session.agent_responses.append(reply)
+        if reply:
+            session.agent_responses.append(reply)
+            session.messages.append({"sender": "agent", "text": reply})
+            print_agent_response(reply, "Ramesh Kumar", time.time() - t0)
 
-        response_elapsed = time.time() - response_start
-
-        # ── Rich Print: Agent Response ──
-        print_agent_response(
-            response_text=reply,
-            persona_name="Ramesh Kumar",
-            elapsed_seconds=response_elapsed,
-        )
-
-        # Record agent response in session
-        session.messages.append({
-            "sender": "agent",
-            "text": reply,
-            "timestamp": datetime.utcnow().isoformat() + "Z",
-        })
-
-        # Update session (resets inactivity timer)
+        # Save session before returning
         self.session_manager.update_session(session)
 
-        # ══════════════════════════════════════════════════════════════
-        # INTEL PATH (async, background) — PRD §6
-        # Council voting, intelligence extraction, and final Judge
-        # aggregation are completely decoupled from the reply latency.
-        # This pipeline never blocks the reply agent.
-        # ══════════════════════════════════════════════════════════════
-        asyncio.create_task(
-            self._run_intel_pipeline(
-                request.sessionId,
-                request.message.text,
-                request.conversationHistory,
-            )
-        )
-
         # Build response
-        reply_elapsed = time.time() - reply_start
         response_obj = HoneypotResponse(
             sessionId=request.sessionId,
+            status="success",
             reply=reply,
-            scamDetected=session.is_scam_detected,  # may be False on first turn
+            scamDetected=session.is_scam_detected,
             confidence=session.scam_confidence,
         )
 
-        # ── Rich Print: Full API Response JSON ──
-        print_api_response(
-            response_dict=response_obj.model_dump(),
-            total_elapsed=reply_elapsed,
-        )
+        elapsed = time.time() - pipeline_start
+        print_api_response(response_obj.model_dump(), elapsed)
+        print_pipeline_summary(elapsed, request.sessionId, session.is_scam_detected)
 
-        # ── Rich Print: Reply Path Summary ──
-        print_pipeline_summary(
-            total_elapsed=reply_elapsed,
-            session_id=request.sessionId,
-            scam=session.is_scam_detected,
+        # ── STEP 2: Fire background intel task (council → judge → callback) ──
+        context = self._build_context(request.conversationHistory)
+        conversation_history_count = len(request.conversationHistory) if request.conversationHistory else 0
+        asyncio.create_task(
+            self._background_intel(
+                session_id=request.sessionId,
+                message=request.message.text,
+                context=context,
+                conversation_history_count=conversation_history_count,
+            )
         )
 
         return response_obj
 
-    async def _run_intel_pipeline(self, session_id: str, message: str, history: list):
-        """
-        Background intel pipeline: council → update session → extract → callback.
-        This runs independently of the reply path.
-        """
+    async def _background_intel(self, session_id: str, message: str, context: str, conversation_history_count: int = 0):
+        """Background task: council → intel → judge → callback."""
         try:
             session = self.session_manager.get_session(session_id)
-            if not session:
+            if not session or session.callback_sent:
                 return
 
-            # Build context for detection
-            context = self._build_context(history)
-
-            # ── Step 1: Detection Council (5 independent LLM agents) ──
-            # Rich printing of votes + verdict happens inside detection_council.analyze
+            # ── Council: 5 LLM calls in parallel ──
             votes, verdict = await self.detection_council.analyze(
                 message=message,
                 context=context,
@@ -228,104 +138,77 @@ class HoneypotOrchestrator:
                 turn_count=session.turn_count,
             )
 
-            # Persist raw council votes for Judge aggregation at callback time
-            session.council_votes.extend(votes)
+            # Update session with verdict
+            if votes:
+                session.council_votes.extend(votes)
+            if verdict:
+                if verdict.is_scam and verdict.confidence >= self.confidence_threshold and verdict.scam_votes >= 2:
+                    session.is_scam_detected = True
+                    session.scam_confidence = verdict.confidence
+                    session.scam_type = verdict.scam_type
+                    session.council_verdict = verdict
+                else:
+                    session.is_scam_detected = False
+                    session.scam_confidence = 0.0
+                    session.scam_type = "safe"
 
-            # Update session with lightweight verdict (for in-API telemetry)
-            if verdict.is_scam and verdict.confidence >= self.confidence_threshold:
-                session.is_scam_detected = True
-                session.scam_confidence = verdict.confidence
-                session.scam_type = verdict.scam_type
-                session.council_verdict = verdict
-
-            # ── Step 2: Intelligence Extraction (regex + LLM) ──
-            intel = await self.intelligence_extractor.extract(session.messages)
-
-            # Merge with existing intelligence (deduplicated lists)
-            for key, values in intel.items():
-                if isinstance(values, list):
-                    existing = session.extracted_intelligence.get(key, [])
-                    merged = list(set(existing + values))
-                    session.extracted_intelligence[key] = merged
-
-            # Intentionally do NOT reset the inactivity timer here.
-            # The 5-second window is measured from the last incoming request
-            # (reply agent path), not from background intel updates. Session
-            # state is already held by reference inside SessionManager.
-
-        except Exception as e:
-            logger.error(f"Intel pipeline error for {session_id}: {e}")
-
-    async def _on_inactivity_timeout(self, session_id: str):
-        """
-        Called when a session's inactivity timer fires (no new messages within
-        the configured window, default 5 seconds).
-        """
-        logger.info(f"Inactivity timeout for session {session_id} — triggering Judge + callback")
-        await self._send_callback(session_id)
-
-    async def _send_callback(self, session_id: str):
-        """Run Judge aggregation and send the final callback for a session."""
-        session = self.session_manager.get_session(session_id)
-        if not session or session.callback_sent:
-            return
-
-        try:
-            # One more intelligence sweep over full conversation (best-effort enrichment)
-            if session.messages:
+            # ── Intelligence extraction ──
+            try:
                 intel = await self.intelligence_extractor.extract(session.messages)
                 for key, values in intel.items():
                     if isinstance(values, list):
                         existing = session.extracted_intelligence.get(key, [])
-                        merged = list(set(existing + values))
-                        session.extracted_intelligence[key] = merged
+                        session.extracted_intelligence[key] = list(set(existing + values))
+            except Exception as e:
+                logger.error(f"Intel extraction failed: {e}")
 
-            # ── Judge LLM: build final callback JSON from all council votes ──
+            # Total messages = conversation history + session messages (incoming + reply)
+            total_msg_count = conversation_history_count + len(session.messages)
+
+            # ── Judge aggregation (llama-3.3-70b) → builds callback JSON ──
+            callback_payload = None
             try:
-                last_message_text = session.messages[-1]["text"] if session.messages else ""
-            except Exception:
-                last_message_text = ""
-
-            votes = session.council_votes or []
-            if votes:
-                judge_payload = await self.judge_agent.adjudication(
-                    message=last_message_text,
+                callback_payload = await self.judge_agent.adjudication(
+                    message=message,
                     votes=votes,
-                    session_id=session.session_id,
-                    turn_count=session.turn_count,
+                    session_id=session_id,
+                    total_msg_count=total_msg_count,
                 )
-            else:
-                judge_payload = None
+            except Exception as e:
+                logger.error(f"Judge failed: {e}")
+                callback_payload = self.judge_agent._fallback_aggregation(
+                    votes=votes,
+                    session_id=session_id,
+                    total_msg_count=total_msg_count,
+                )
 
-            # Merge Judge's extractedIntelligence with locally accumulated intel
-            if judge_payload:
-                merged_intel = dict(judge_payload.get("extractedIntelligence", {}))
-                for key, values in session.extracted_intelligence.items():
-                    if isinstance(values, list):
-                        existing = merged_intel.get(key, [])
-                        merged_intel[key] = list(set(existing + values))
-                judge_payload["extractedIntelligence"] = merged_intel
-                session.final_callback_payload = judge_payload
+            # Merge extracted intelligence into payload
+            if callback_payload:
+                merged = dict(callback_payload.get("extractedIntelligence", {}))
+                for key, vals in session.extracted_intelligence.items():
+                    if isinstance(vals, list):
+                        existing = merged.get(key, [])
+                        merged[key] = list(set(existing + vals))
+                callback_payload["extractedIntelligence"] = merged
 
-            # (rich printing of callback payload happens inside callback_service)
-            response = await self.callback_service.send_from_session(session)
-            self.session_manager.mark_callback_sent(session_id, response)
-            logger.info(f"Callback sent for session {session_id}: {response[:100]}")
+            # ── Send callback (once per session) ──
+            if callback_payload and not session.callback_sent:
+                session.final_callback_payload = callback_payload
+                try:
+                    resp = await self.callback_service.send_from_session(session)
+                    self.session_manager.mark_callback_sent(session_id, resp)
+                    logger.info(f"Callback sent for {session_id}")
+                except Exception as e:
+                    logger.error(f"Callback send failed for {session_id}: {e}")
+
+            self.session_manager.update_session(session)
 
         except Exception as e:
-            logger.error(f"Callback failed for session {session_id}: {e}")
-            self.session_manager.mark_callback_sent(session_id, f"Error: {str(e)}")
+            logger.error(f"Background intel failed for {session_id}: {e}", exc_info=True)
 
     def _build_context(self, history: list) -> str:
-        """Build a concise context string from conversation history."""
         if not history:
-            return "No prior context — this is the first message."
-
-        recent = history[-6:]  # Last 6 messages
-        lines = []
-        for msg in recent:
-            sender = msg.get("sender", "unknown")
-            text = msg.get("text", "")[:200]
-            lines.append(f"[{sender}]: {text}")
-
+            return "No prior context."
+        recent = history[-6:]
+        lines = [f"[{m.get('sender','?')}]: {m.get('text','')[:200]}" for m in recent]
         return "Previous conversation:\n" + "\n".join(lines)

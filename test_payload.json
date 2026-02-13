@@ -1,0 +1,14 @@
+{
+  "sessionId": "curl-test-cache-ttl",
+  "message": {
+    "sender": "scammer",
+    "text": "URGENT: Your bank account is suspended. Update KYC now at http://bit.ly/kyc-update",
+    "timestamp": "1770907000"
+  },
+  "conversationHistory": [],
+  "metadata": {
+    "channel": "SMS",
+    "language": "English",
+    "locale": "IN"
+  }
+}

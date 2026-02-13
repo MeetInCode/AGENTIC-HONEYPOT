@@ -4,57 +4,74 @@ An AI-powered honeypot system that detects scam messages, engages scammers auton
 
 ## 📋 Overview
 
-This system implements a multi-model **Detection Council** for scam classification and a **LangGraph-based Engagement Agent** for autonomous scammer interaction. Built for the GUVI Hackathon challenge.
+This system implements a single-endpoint API (`POST /honeypot/message`) that:
+1.  **Instantly Relies**: Provides a synchronous, human-like response to the scammer.
+2.  **Analyzes Asynchronously**: Uses a multi-model **Detection Council** to classify scams and extract intelligence in the background.
+3.  **Reports to Core**: Sends a mandatory final callback with aggregated intelligence to the GUVI evaluation endpoint.
+
+Built for the GUVI Hackathon challenge.
 
 ### Key Features
 
-- **Multi-Model Detection Council**: 7 specialized agents for robust scam detection
-- **LangGraph Engagement**: Stateful, multi-turn conversation management
-- **Intelligence Extraction**: Automated extraction of UPI IDs, phone numbers, phishing links
-- **Persona-based Engagement**: Believable victim personas for realistic interaction
-- **Mandatory Callback**: Automatic result submission to GUVI evaluation endpoint
+-   **Dual-Path Architecture**:
+    -   **Sync Path**: Instant replies (<2s latency) using highly optimized LLMs.
+    -   **Async Path**: Deep analysis, voting, and intelligence extraction without blocking the chat.
+-   **5-Agent Detection Council**: A mix of NVIDIA NIM and Groq models for robust scam classification.
+-   **Hybrid Intelligence Extraction**: Combines high-speed Regex with Llama-4-Scout for precise entity extraction (UPIs, Banks, Links).
+-   **Persona-based Engagement**: "Ramesh Kumar" — a believable, confused victim persona that keeps scammers engaged.
+-   **Judge Agent**: A final Llama 3.3 70B aggregator that compiles all findings into a strict JSON payload.
 
 ## 🏗️ Architecture
 
+The system uses a **Split-Process Architecture** to ensure responsiveness while performing heavy analysis.
+
+```mermaid
+graph TD
+    User[Evaluator/Scammer] -->|POST /honeypot/message| API[FastAPI Gateway]
+    
+    API -->|1. Immediate| ReplyGen[Response Generator]
+    ReplyGen -->|2. Sync Reply| User
+    
+    API -.->|3. Background Task| Orchestrator
+    
+    subgraph "Async Intelligence Pipeline"
+        Orchestrator --> Council[Detection Council (5 Agents)]
+        Orchestrator --> Extractor[Intel Extractor (Regex + LLM)]
+        
+        Council -->|Votes| Judge[Judge Agent (Llama 3.3)]
+        Extractor -->|Entities| Judge
+        
+        Judge -->|Final Decision| Callback[Callback Service]
+    end
+    
+    Callback -->|POST Result| GUVI[GUVI Evaluation Endpoint]
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     FastAPI Gateway                          │
-│                   (API Key Authentication)                   │
-└─────────────────────────┬─────────────────────────────────────┘
-                          │
-┌─────────────────────────▼─────────────────────────────────────┐
-│                  Honeypot Orchestrator                        │
-└─────────┬───────────────┬────────────────────┬───────────────┘
-          │               │                    │
-┌─────────▼────────┐ ┌────▼────────────┐ ┌─────▼──────────────┐
-│Detection Council │ │ Engagement      │ │ Intelligence       │
-│                  │ │ Graph           │ │ Extractor          │
-│ 🕵️ RuleGuard    │ │ (LangGraph)     │ │                    │
-│ 🧮 FastML       │ │                 │ │ • Regex            │
-│ 🤖 BertLite     │ │ • Persona Mgr   │ │ • NER (spaCy)      │
-│ 📜 LexJudge     │ │ • Response Gen  │ │ • LLM Extraction   │
-│ 🔍 Sentinel     │ │ • State Graph   │ │                    │
-│ 🧵 ContextSeer  │ │                 │ │                    │
-│ 🧰 MetaMod      │ │                 │ │                    │
-└──────────────────┘ └─────────────────┘ └────────────────────┘
-                          │
-                ┌─────────▼─────────┐
-                │  GUVI Callback    │
-                │  Service          │
-                └───────────────────┘
-```
+
+## 🧪 Detection Council Members
+
+The "Brain" of the honeypot consists of 5 independent agents running in parallel:
+
+| Agent | Model Provider | Model | Specialty |
+| :--- | :--- | :--- | :--- |
+| **NemotronVoter** | NVIDIA | `nemotron-3-8b` | **Bank Fraud Safety**: Expert in Indian banking scams, KYC fraud, and OTP theft. |
+| **MultilingualVoter** | NVIDIA | `nemotron-multilingual` | **Language Safety**: Handles Hinglish and regional language threats. |
+| **MinimaxVoter** | NVIDIA | `minimax-m2` | **Linguistics**: Analyzes tone, urgency, and social engineering patterns. |
+| **LlamaScoutVoter** | Groq | `llama-4-scout` | **Realism & Anomalies**: Spots bot-like templates vs human scammers. |
+| **GptOssVoter** | Groq | `gpt-oss-120b` | **Scam Strategy**: Identifies specific playbooks (Digital Arrest, Job Scam, etc.). |
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 
-- Python 3.10+
-- Groq API Key (free at [console.groq.com](https://console.groq.com))
+-   Python 3.10+
+-   Groq API Key
+-   NVIDIA NIM API Key
 
 ### Installation
 
 ```bash
-# Clone or navigate to the project
+# Clone the repository
+git clone <repo-url>
 cd agentic_honeypot
 
 # Create virtual environment
@@ -63,190 +80,164 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 # Install dependencies
 pip install -r requirements.txt
-
-# Download spaCy model (optional, for NER)
-python -m spacy download en_core_web_sm
 ```
 
 ### Configuration
 
-```bash
-# Copy environment template
-cp .env.example .env
+Copy the example environment file and add your keys:
 
-# Edit .env with your credentials
-# Required:
-#   - API_SECRET_KEY: Your secret API key for authentication
-#   - GROQ_API_KEY: Your Groq API key
+```bash
+cp .env.example .env
+```
+
+Edit `.env`:
+```ini
+# API Security
+API_SECRET_KEY=your_secret_key_here
+
+# LLM API Keys
+GROQ_API_KEY=gsk_...
+NVIDIA_API_KEY=nvapi-...
+
+# Optional: Multiple keys for load balancing (comma-separated)
+GROQ_API_KEYS=gsk_key1,gsk_key2,gsk_key3
+NVIDIA_API_KEYS=nvapi_key1,nvapi_key2
+
+# Timeout Configuration (seconds)
+TIMEOUT_SHORT=5          # Single message sessions
+TIMEOUT_LONG=10         # Sessions with conversation history
+HARD_DEADLINE=35        # Maximum time before forced callback
+DISPATCHER_INTERVAL=1.0 # Callback dispatcher check interval
+
+# Server Configuration
+PORT=8000
+WORKERS=4                # Number of worker processes (production: 4+)
+DEBUG=false
+LOG_LEVEL=INFO
+
+# Request Limits
+MAX_MESSAGE_LENGTH=10000
+REQUEST_TIMEOUT=30.0
 ```
 
 ### Running the Server
 
+**Development Mode:**
 ```bash
-# Start the API server
+# Start with auto-reload (single worker)
+python main.py
+# Or set DEBUG=true in .env
+```
+
+**Production Mode:**
+```bash
+# Set DEBUG=false and WORKERS=4+ in .env
 python main.py
 
-# Or with uvicorn directly
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+# Or use gunicorn/uvicorn directly:
+uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
 ```
 
-### Testing
-
-```bash
-# Run the test suite
-python tests/test_api.py
-
-# Or with pytest
-pytest tests/ -v
-```
+**Concurrent Request Handling:**
+- FastAPI handles concurrent requests natively using async/await
+- Multiple worker processes (set via `WORKERS` env var) enable true parallelism
+- Each worker can handle thousands of concurrent connections
+- Background tasks (intel pipeline) run independently without blocking responses
+- API key rotation pool automatically distributes load across multiple keys
 
 ## 📖 API Documentation
 
-Once running, access:
-- **Swagger UI**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
-
 ### Main Endpoint
 
-```http
-POST /api/v1/analyze
-Content-Type: application/json
-x-api-key: YOUR_API_KEY
+**POST** `/honeypot/message`
 
-{
-    "sessionId": "unique-session-id",
-    "message": {
-        "sender": "scammer",
-        "text": "Your bank account will be blocked. Verify now.",
-        "timestamp": "2024-01-26T10:00:00Z"
-    },
-    "conversationHistory": [],
-    "metadata": {
-        "channel": "SMS",
-        "language": "English",
-        "locale": "IN"
-    }
-}
-```
+**Headers:**
+-   `x-api-key`: Your configured secret key
+-   `Content-Type`: `application/json`
 
-### Response
-
+**Request Body:**
 ```json
 {
-    "status": "success",
-    "scamDetected": true,
-    "agentResponse": "What should I do? Which bank are you from?",
-    "engagementMetrics": {
-        "engagementDurationSeconds": 45,
-        "totalMessagesExchanged": 2
-    },
-    "extractedIntelligence": {
-        "bankAccounts": [],
-        "upiIds": [],
-        "phishingLinks": [],
-        "phoneNumbers": [],
-        "suspiciousKeywords": ["blocked", "verify"]
-    },
-    "agentNotes": "Scam confirmed with 85% confidence. | Goal: build_trust",
-    "councilVerdict": {
-        "is_scam": true,
-        "confidence": 0.85,
-        "votes": [...],
-        "justification": "...",
-        "vote_breakdown": "..."
-    }
+  "sessionId": "unique-session-id",
+  "message": {
+    "sender": "scammer",
+    "text": "Your SBI account is blocked. Click here: http://bit.ly/fake",
+    "timestamp": 1700000000
+  },
+  "conversationHistory": []
 }
 ```
 
-## 🧪 Detection Council Members
+**Response (Immediate):**
+```json
+{
+  "sessionId": "unique-session-id",
+  "status": "success",
+  "reply": "Oh no! Why is it blocked? I am scared.",
+  "scamDetected": true,
+  "confidence": 0.95
+}
+```
 
-| Agent | Type | Description |
-|-------|------|-------------|
-| 🕵️‍♂️ RuleGuard | Deterministic | Pattern matching, keyword detection, urgency indicators |
-| 🧮 FastML | ML | TF-IDF + RandomForest classifier |
-| 🤖 BertLite | Transformer | DistilBERT for deep semantic understanding |
-| 📜 LexJudge | LLM | Groq-hosted LLaMA for reasoning-based classification |
-| 🔍 OutlierSentinel | Embedding | SBERT-based anomaly detection |
-| 🧵 ContextSeer | LLM+Memory | Multi-turn context analysis |
-| 🧰 MetaModerator | Meta-Agent | Weighted ensemble aggregator |
+### Mandatory Callback
 
-## 📁 Project Structure
+The system autonomously sends the final analysis to the configured GUVI endpoint when:
+1.  Specific high-confidence intelligence (UPI, Link) is found.
+2.  Or 15 seconds have passed (Hard Deadline).
+3.  Or the conversation goes inactive.
+
+**Callback Payload:**
+```json
+{
+  "sessionId": "unique-session-id",
+  "scamDetected": true,
+  "totalMessagesExchanged": 5,
+  "extractedIntelligence": {
+    "bankAccounts": [],
+    "upiIds": ["scammer@ybl"],
+    "phishingLinks": ["http://bit.ly/fake"],
+    "phoneNumbers": [],
+    "suspiciousKeywords": ["blocked", "SBI", "click here"]
+  },
+  "agentNotes": "Bank fraud scam detected. Scammer attempted to harvest credentials via phishing link."
+}
+```
+
+## 📂 Project Structure
 
 ```
 agentic_honeypot/
-├── main.py                 # FastAPI application entry point
-├── requirements.txt        # Python dependencies
-├── .env.example           # Environment template
-│
-├── config/
-│   └── settings.py        # Pydantic configuration
-│
-├── models/
-│   └── schemas.py         # Pydantic data models
-│
-├── agents/
-│   ├── base_agent.py      # Abstract base class
-│   ├── rule_guard.py      # Rule-based detection
-│   ├── fast_ml.py         # ML classifier
-│   ├── bert_lite.py       # Transformer model
-│   ├── lex_judge.py       # LLM classifier
-│   ├── outlier_sentinel.py # Anomaly detector
-│   ├── context_seer.py    # Context analyzer
-│   ├── meta_moderator.py  # Ensemble voter
-│   └── detection_council.py # Orchestrator
-│
-├── engagement/
-│   ├── persona_manager.py  # Victim personas
-│   ├── response_generator.py # LLM response generation
-│   └── engagement_graph.py  # LangGraph workflow
-│
-├── services/
-│   ├── intelligence_extractor.py # Intel extraction
-│   ├── session_manager.py  # Session state
-│   └── callback_service.py # GUVI callback
-│
+├── main.py                 # FastAPI Entry Point
 ├── core/
-│   └── orchestrator.py     # Main orchestrator
-│
-├── api/
-│   ├── honeypot.py        # Main API routes
-│   └── health.py          # Health endpoints
-│
-└── tests/
-    ├── test_api.py        # API integration tests
-    └── test_agents.py     # Unit tests
+│   └── orchestrator.py     # Logic Coordinator (Sync vs Async paths)
+├── agents/                 # AI Agents
+│   ├── detection_council.py # Parallel Voter Runner
+│   ├── nvidia_agents.py    # Nemotron, Minimax Agents
+│   ├── groq_agents.py      # LlamaScout, GPT-OSS Agents
+│   └── meta_moderator.py   # Judge Agent (Aggregator)
+├── engagement/
+│   ├── response_generator.py # "Ramesh Kumar" Persona Logic
+│   └── persona_manager.py    # System Prompts & Context
+├── services/
+│   ├── intelligence_extractor.py # Regex + LLM Extraction
+│   ├── session_manager.py    # In-Memory State
+│   └── callback_service.py   # GUVI Callback Handler
+├── models/
+│   └── schemas.py          # Pydantic Models
+└── config/
+    └── settings.py         # Configuration Management
 ```
 
-## 🔧 Configuration Options
+## 🛠️ Tech Stack
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `API_SECRET_KEY` | API authentication key | Required |
-| `GROQ_API_KEY` | Groq API key | Required |
-| `GROQ_MODEL_DETECTION` | Model for detection | llama-3.3-70b-versatile |
-| `GROQ_MODEL_ENGAGEMENT` | Model for engagement | mixtral-8x7b-32768 |
-| `SCAM_CONFIDENCE_THRESHOLD` | Scam detection threshold | 0.6 |
-| `MAX_CONVERSATION_TURNS` | Max turns before callback | 20 |
-
-## 📊 Evaluation Metrics
-
-- **Scam Detection Accuracy**: Multi-model ensemble for high precision
-- **Intelligence Extraction Rate**: Regex + NER + LLM for comprehensive extraction
-- **Engagement Quality**: Persona-based natural responses
-- **Callback Success**: Automatic submission with retry logic
-
-## ⚠️ Ethical Guidelines
-
-- ❌ No impersonation of real individuals
-- ❌ No sharing of real user PII
-- ❌ No illegal instructions or harassment
-- ✅ Responsible data handling
-- ✅ Fake placeholder data only
+-   **Framework**: FastAPI
+-   **Runtime**: Python 3.10+ (Asyncio)
+-   **LLM Providers**:
+    -   **Groq**: Ultra-low latency inference for engagement & scouting.
+    -   **NVIDIA NIM**: Specialized safety and linguistics models.
+-   **Validation**: Pydantic
+-   **Network**: HTTPX
 
 ## 📄 License
 
 MIT License - Built for GUVI Hackathon 2024
-
----
-
-**🍯 Built with LangGraph, Groq, and FastAPI**

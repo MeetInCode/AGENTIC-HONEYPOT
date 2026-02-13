@@ -6,8 +6,8 @@ import re
 import json
 import logging
 from typing import Dict, Any, List
-from groq import AsyncGroq
 from config.settings import get_settings
+from utils.key_manager import get_next_groq_key, get_groq_client
 
 logger = logging.getLogger(__name__)
 
@@ -44,22 +44,28 @@ SCAM_KEYWORDS = [
 ]
 
 
-LLM_EXTRACTION_SYSTEM = """You are a forensic intelligence analyst specialized in extracting actionable scam indicators from Indian digital fraud communications.
+LLM_EXTRACTION_SYSTEM = """You are a forensic intelligence analyst specialised in extracting actionable scam indicators from **Indian digital fraud communications** (SMS, WhatsApp, email, chat).
 
-You extract structured intelligence that law enforcement and fraud prevention teams can use to track and block scammers. Your extraction must be thorough — every UPI ID, phone number, URL, bank account, and scammer identifier matters.
+Your job is to help a honeypot system that:
+- Detects scam intent
+- Engages scammers without revealing detection
+- Extracts intelligence for a mandatory final callback to an evaluation API
+
+You must be extremely thorough — **every** UPI ID, phone number, URL, bank account number,
+case ID, and authority name can matter.
 
 Entity types you extract:
-- UPI IDs: format user@handle (handles: @ybl, @paytm, @okaxis, @okhdfcbank, @okicici, @oksbi, @upi, @apl, @ibl)
+- UPI IDs: format user@handle (handles: @ybl, @paytm, @okaxis, @okhdfcbank, @okicici, @oksbi, @upi, @apl, @ibl, plus any custom handle like claim.prize@ybl, rbi.safe@axis)
 - Phone numbers: Indian format +91-XXXXXXXXXX or 10-digit starting with 6-9
 - Bank accounts: 9-18 digit account numbers, IFSC codes (format: ABCD0XXXXXX)
-- Phishing links: suspicious URLs, especially non-official domains (.xyz, .tk, .ml, .click, shortened URLs)
+- Phishing links: suspicious URLs, especially non-official domains (.xyz, .tk, .ml, .click, shortened URLs, fake-bank domains)
 - Email addresses: associated with scam communications
-- Scammer identifiers: names, employee IDs, badge numbers, department claims they reveal
-- Keywords: urgency words, threats, authority claims, sensitive data requests
+- Scammer identifiers: names, designations, fake departments, badge/ID numbers (e.g. "Officer Rahul", "Cyber Crime Division", "Inspector Vikram", "Case #CC-2024-8845")
+- Keywords: urgency words, threats, authority claims, sensitive data requests (KYC, OTP, PIN, CVV, Aadhar, PAN, refunds, "account blocked", "KYC expired", "FIR", "warrant")
 
-Always respond with valid JSON only."""
+Always respond with valid JSON only. Never invent entities that do not appear in the conversation."""
 
-LLM_EXTRACTION_PROMPT = """Extract ALL scam-related intelligence from this conversation. Be thorough — every data point matters for tracking scammers.
+LLM_EXTRACTION_PROMPT = """Extract **ALL** scam-related intelligence from this conversation. Be meticulous — every real-world identifier matters for tracking scammers.
 
 ## CONVERSATION
 {messages}
@@ -84,7 +90,7 @@ Extraction: {{
 }}
 
 ## YOUR EXTRACTION
-Extract every identifiable entity from the conversation above. Only include items ACTUALLY present — use empty arrays if nothing found. Respond with ONLY valid JSON:
+Extract every identifiable entity from the conversation above. Only include items ACTUALLY present — use empty arrays if nothing is found. Respond with ONLY valid JSON:
 {{
   "upiIds": [],
   "phoneNumbers": [],
@@ -101,7 +107,8 @@ class IntelligenceExtractor:
 
     def __init__(self):
         settings = get_settings()
-        self.client = AsyncGroq(api_key=settings.groq_api_key)
+        # Prefer shared Groq key as fallback; rotation pool is handled centrally.
+        self._preferred_api_key = settings.groq_api_key
         self.model = settings.groq_model_scout  # llama-4-scout
 
     async def extract(self, messages: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -168,14 +175,19 @@ class IntelligenceExtractor:
                 for m in messages
             )
 
-            response = await self.client.chat.completions.create(
+            # Rotate Groq API key and get pooled client for extraction calls.
+            api_key = get_next_groq_key(self._preferred_api_key)
+            client = get_groq_client(api_key)
+
+            response = await client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": LLM_EXTRACTION_SYSTEM},
                     {"role": "user", "content": LLM_EXTRACTION_PROMPT.format(messages=msg_text)},
                 ],
                 temperature=0.1,
-                max_tokens=500,
+                # Extraction JSON is compact; keep token limit modest for speed.
+                max_tokens=400,
                 response_format={"type": "json_object"},
             )
 

@@ -1,15 +1,12 @@
 """
 Detection Council — orchestrates the 5 LLM council members.
 
-Each council member is a fully independent agent:
-  1. NemotronVoter            (NVIDIA safety / bank fraud)
-  2. MultilingualSafetyVoter  (NVIDIA multilingual safety)
-  3. MinimaxVoter             (NVIDIA linguistic patterns)
-  4. LlamaScoutVoter          (Groq realism / anomaly)
-  5. GptOssVoter              (Groq scam-playbook strategy)
-
-All 5 run in parallel for every message. None of them wait on each other.
-Only the Judge LLM (separate agent) aggregates their outputs at callback time.
+Council Members:
+1. LlamaScoutVoter (Groq) - CM1
+2. GptOssVoter     (Groq) - CM2
+3. NemotronVoter   (NVIDIA) - CM3
+4. MinimaxVoter    (NVIDIA) - CM4
+5. LlamaScoutVoter (Groq) - CM5 (Second Scout, as requested)
 """
 
 import asyncio
@@ -18,8 +15,11 @@ import time
 from typing import List, Tuple
 
 from models.schemas import CouncilVote, CouncilVerdict
-from agents.nvidia_agents import NemotronVoter, MultilingualSafetyVoter, MinimaxVoter
-from agents.groq_agents import LlamaScoutVoter, GptOssVoter
+from agents.nvidia_agents import MinimaxVoter, NemotronVoter
+from agents.groq_agents import (
+    GptOssVoter,
+    LlamaScoutVoter,
+)
 from utils.rich_printer import print_council_votes
 
 logger = logging.getLogger(__name__)
@@ -29,13 +29,13 @@ class DetectionCouncil:
     """Runs the 5 detection voters in parallel and returns their votes + a lightweight verdict."""
 
     def __init__(self):
-        # Initialize all voters (independent agents)
+        # Initialize all voters (independent agents) as requested by user
         self.voters = [
-            NemotronVoter(),
-            MultilingualSafetyVoter(),
-            MinimaxVoter(),
-            LlamaScoutVoter(),
-            GptOssVoter(),
+            LlamaScoutVoter(),  # CM1
+            GptOssVoter(),      # CM2
+            NemotronVoter(),    # CM3
+            MinimaxVoter(),     # CM4
+            LlamaScoutVoter(),  # CM5 (Duplicate Scout)
         ]
         logger.info(f"Detection Council initialized with {len(self.voters)} voters")
 
@@ -47,7 +47,7 @@ class DetectionCouncil:
         turn_count: int = 0,
     ) -> Tuple[List[CouncilVote], CouncilVerdict]:
         """
-        Run all 5 voters fully in parallel and return:
+        Run all voters fully in parallel and return:
           - the raw list of CouncilVote objects (per-agent intelligence)
           - an aggregated CouncilVerdict (simple majority / max-confidence merge)
 
@@ -55,7 +55,6 @@ class DetectionCouncil:
         """
         start_time = time.time()
 
-        # Fan out to all council members concurrently
         vote_tasks = [
             voter.vote(message, context, session_id, turn_count) for voter in self.voters
         ]
@@ -83,25 +82,50 @@ class DetectionCouncil:
         # ── Rich Print: Council Votes ──
         print_council_votes(votes, voting_elapsed)
 
-        # Lightweight, non-LLM aggregation for quick state updates
+        # Lightweight aggregation for immediate API response
+        # Use strict majority (>50%) to avoid false positives
         scam_votes = [v for v in votes if v.is_scam]
-        is_scam = len(scam_votes) > 0
-        voter_count = len(votes)
-        max_conf = max((v.confidence for v in votes), default=0.0)
-        scam_type = scam_votes[0].scam_type if scam_votes else "unknown"
-        reasoning = (
-            f"{len(scam_votes)}/{voter_count} council members flagged this as scam."
-            if voter_count > 0
-            else "No council votes available."
-        )
+        safe_votes = [v for v in votes if not v.is_scam and v.scam_type != "error"]
+        
+        # Strict detection: require >50% scam votes (not >=) AND at least 2 scam votes
+        # This prevents false positives from single-agent errors
+        is_scam = len(scam_votes) > len(votes) / 2 and len(scam_votes) >= 2
+        
+        # If tied or unclear, default to safe (avoid false positives)
+        if len(scam_votes) == len(safe_votes):
+            is_scam = False
+        
+        # Calculate confidence: use average of scam votes, but require minimum threshold
+        extracted_confidences = [v.confidence for v in votes if v.is_scam]
+        if extracted_confidences:
+            avg_conf = sum(extracted_confidences) / len(extracted_confidences)
+            max_conf = max(extracted_confidences)
+            # Use average but cap at max (more conservative)
+            confidence = min(avg_conf, max_conf)
+        else:
+            confidence = 0.0
+        
+        # Require minimum confidence threshold to avoid false positives
+        if is_scam and confidence < 0.5:
+            is_scam = False
+            confidence = 0.0
+        
+        scam_type = "unknown"
+        if scam_votes:
+            # Use most common scam type from scam votes
+            scam_types = [v.scam_type for v in scam_votes if v.scam_type != "error"]
+            if scam_types:
+                scam_type = max(set(scam_types), key=scam_types.count)
+            else:
+                scam_type = scam_votes[0].scam_type if scam_votes else "unknown"
 
         verdict = CouncilVerdict(
             is_scam=is_scam,
             confidence=max_conf,
             scam_type=scam_type,
             scam_votes=len(scam_votes),
-            voter_count=voter_count,
-            reasoning=reasoning,
+            voter_count=len(votes),
+            reasoning=f"{len(scam_votes)}/{len(votes)} voted scam.",
             votes=votes,
         )
 
@@ -113,4 +137,3 @@ class DetectionCouncil:
         )
 
         return votes, verdict
-

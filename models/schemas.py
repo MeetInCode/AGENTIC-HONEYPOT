@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 class Message(BaseModel):
     sender: str
     text: str
-    timestamp: str
+    timestamp: Union[str, int, float]
 
 class Metadata(BaseModel):
     channel: Optional[str] = "SMS"
@@ -24,6 +24,7 @@ class HoneypotRequest(BaseModel):
 
 class HoneypotResponse(BaseModel):
     sessionId: str
+    status: str = Field(default="success")
     reply: Optional[str] = None
     scamDetected: bool
     confidence: float
@@ -55,7 +56,7 @@ class CouncilVote(BaseModel):
     extracted_intelligence: Dict[str, Any] = Field(default_factory=dict)
 
 class CouncilVerdict(BaseModel):
-    """Aggregated verdict from the Judge."""
+    """Aggregated verdict from the council."""
     is_scam: bool
     confidence: float
     scam_type: str
@@ -77,10 +78,10 @@ class SessionState(BaseModel):
     persona_id: str = "default"
     agent_responses: List[str] = Field(default_factory=list)
     callback_sent: bool = False
+    callback_response: Optional[str] = None
     council_verdict: Optional[CouncilVerdict] = None
-    # All raw council votes across the session (for Judge aggregation)
     council_votes: List[CouncilVote] = Field(default_factory=list)
-    # Judge-composed final callback payload (strict GUVI schema)
+    # Judge-composed callback payload (used by callback service)
     final_callback_payload: Optional[Dict[str, Any]] = None
 
 # ─── 3. Callback ──────────────────────────────────────────────────
