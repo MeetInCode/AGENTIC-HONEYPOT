@@ -1,0 +1,128 @@
+# Worker Pool + Session Abort + LLM Council Delay
+
+## Problem
+
+Currently, every incoming request fires an unbounded `asyncio.create_task` for background intel work. There is no:
+- Worker limit (unlimited concurrent background tasks)
+- Session tracking (no knowledge of which worker handles which session)
+- Abort mechanism (duplicate session requests run in parallel, both producing callbacks)
+- Delay logic for LLM council when conversation history is empty
+
+## Proposed Changes
+
+### Core Architecture
+
+```mermaid
+flowchart TD
+    A[POST /honeypot/message] --> B{Worker Pool<br/>4 slots}
+    B -->|Assign| C[Worker N]
+    C --> D[Reply Agent<br/>immediate]
+    D --> E{Has conversation<br/>history?}
+    E -->|Yes| F[Send to LLM Council<br/>immediately]
+    E -->|No| G[Wait 3 seconds]
+    G -->|New same-session<br/>arrives| H[Cancel old worker<br/>assign new worker<br/>send ONLY new payload<br/>to council]
+    G -->|3s elapsed| F
+    F --> I[Intel Extraction]
+    I --> J[Judge Agent]
+    J --> K{Worker aborted?}
+    K -->|No| L[Send Callback]
+    K -->|Yes| M[Discard, Free Worker]
+```
+
+---
+
+### [NEW] [worker_pool.py](file:///c:/Users/Asus/Desktop/GUVI/agentic_honeypot/core/worker_pool.py)
+
+A new module that manages 4 logical workers:
+
+- **`WorkerSlot`** dataclass: `worker_id`, `session_id`, `task (asyncio.Task)`, `cancel_event (asyncio.Event)`, `busy (bool)`
+- **`WorkerPool`** class:
+  - [__init__(self, num_workers=4)](file:///c:/Users/Asus/Desktop/GUVI/agentic_honeypot/agents/groq_agents.py#472-478) — creates 4 `WorkerSlot` instances
+  - `assign(session_id, coro_factory)` — finds an available worker, runs the coroutine. If all busy, awaits a semaphore.
+  - `abort_session(session_id)` — finds the worker handling `session_id`, sets `cancel_event`, cancels its `asyncio.Task`, frees the slot.
+  - `get_worker_for_session(session_id)` — returns worker handling a session (or None)
+  - `status()` — returns dict of worker_id → session_id mappings for debugging
+
+---
+
+### [MODIFY] [orchestrator.py](file:///c:/Users/Asus/Desktop/GUVI/agentic_honeypot/core/orchestrator.py)
+
+Major changes:
+
+1. **Initialize `WorkerPool(4)`** in [__init__](file:///c:/Users/Asus/Desktop/GUVI/agentic_honeypot/agents/groq_agents.py#472-478)
+2. **[process_message](file:///c:/Users/Asus/Desktop/GUVI/agentic_honeypot/api/honeypot.py#40-128)** changes:
+   - Check if any worker is already handling this `session_id`
+   - If so, **abort** that worker (cancel its task, set cancel event)
+   - Assign new worker for this session
+   - Reply agent runs immediately (unchanged)
+   - Background intel is dispatched through the worker pool
+3. **[_background_intel](file:///c:/Users/Asus/Desktop/GUVI/agentic_honeypot/core/orchestrator.py#126-211)** changes:
+   - Accept a `cancel_event: asyncio.Event` parameter
+   - **LLM Council delay logic**:
+     - If `conversation_history_count == 0` (empty history): wait 3 seconds via `asyncio.wait_for(cancel_event.wait(), timeout=3.0)`
+       - If cancel fires during wait → new payload superseded this one → skip council, exit
+       - If timeout → no new request → proceed to council
+     - If `conversation_history_count > 0`: send to council immediately
+   - Before each major step (council, intel, judge, callback), check `cancel_event.is_set()` and bail out if true
+   - Never send callback if `cancel_event` is set
+
+---
+
+### [MODIFY] [honeypot.py](file:///c:/Users/Asus/Desktop/GUVI/agentic_honeypot/api/honeypot.py)
+
+No significant changes needed — the orchestrator internally manages workers. The API surface stays identical.
+
+---
+
+### [MODIFY] [settings.py](file:///c:/Users/Asus/Desktop/GUVI/agentic_honeypot/config/settings.py)
+
+Add:
+```python
+worker_pool_size: int = Field(default=4, alias="WORKER_POOL_SIZE")
+council_delay_seconds: float = Field(default=3.0, alias="COUNCIL_DELAY_SECONDS")
+```
+
+---
+
+## Key Behaviors
+
+| Scenario | Behavior |
+|---|---|
+| New session, empty history | Reply agent responds immediately. Wait 3s before council. If no new request → council runs. |
+| New session, has history | Reply agent responds immediately. Council runs immediately. |
+| Duplicate session arrives during 3s wait | Old worker aborted (cancel_event set). New worker assigned. Only new payload sent to council. |
+| Duplicate session arrives during council/intel/judge | Old worker aborted. No callback from old worker. New worker starts fresh. |
+| All 4 workers busy | New request waits for a worker slot to free up (asyncio.Semaphore). |
+
+## Verification Plan
+
+### Automated Test
+
+**Existing test files**: [tests/test_api.py](file:///c:/Users/Asus/Desktop/GUVI/agentic_honeypot/tests/test_api.py), [tests/test_agents.py](file:///c:/Users/Asus/Desktop/GUVI/agentic_honeypot/tests/test_agents.py), [tests/test_short.py](file:///c:/Users/Asus/Desktop/GUVI/agentic_honeypot/tests/test_short.py) — these test agent voting and API endpoints but not worker pool behavior.
+
+**New test**: We will **not** add unit tests for the worker pool in this iteration. Instead, we'll verify via the stress test.
+
+### Manual Verification
+
+1. **Start the honeypot server** (single Uvicorn worker for easier debugging):
+   ```
+   cd c:\Users\Asus\Desktop\GUVI\agentic_honeypot
+   python -m uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1
+   ```
+
+2. **Run [stress_test.py](file:///c:/Users/Asus/Desktop/GUVI/agentic_honeypot/stress_test.py)** to send the 3 existing test cases:
+   ```
+   cd c:\Users\Asus\Desktop\GUVI\agentic_honeypot
+   python stress_test.py
+   ```
+
+3. **Verify in server logs**:
+   - Worker assignment logs: `Worker 0 assigned to session demo-session-001`
+   - For sessions with history: `Council sent immediately (has history)`
+   - For sessions without history: `Waiting 3s before council...`
+   - Callback received for all 3 sessions
+
+4. **Duplicate session abort test**: The user should manually send the same session ID twice in quick succession and verify:
+   - First worker is aborted (log: `Aborting worker X for session Y`)
+   - No callback from the aborted worker
+   - Second worker processes and sends callback

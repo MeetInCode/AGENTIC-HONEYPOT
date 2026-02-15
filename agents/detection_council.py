@@ -29,15 +29,36 @@ class DetectionCouncil:
     """Runs the 5 detection voters in parallel and returns their votes + a lightweight verdict."""
 
     def __init__(self):
-        # Initialize all voters (independent agents) as requested by user
-        self.voters = [
-            LlamaScoutVoter(),  # CM1
-            GptOssVoter(),      # CM2
-            NemotronVoter(),    # CM3
-            MinimaxVoter(),     # CM4
-            LlamaScoutVoter(),  # CM5 (Duplicate Scout)
-        ]
-        logger.info(f"Detection Council initialized with {len(self.voters)} voters")
+        # Initialize voters based on configuration
+        from config.settings import get_settings
+        settings = get_settings()
+        
+        self.voters = []
+        
+        # Helper to add voters
+        def add_voters(voter_class, count):
+            for _ in range(count):
+                self.voters.append(voter_class())
+        
+        add_voters(LlamaScoutVoter, settings.council_scout_count)
+        add_voters(GptOssVoter, settings.council_gpt_oss_count)
+        add_voters(NemotronVoter, settings.council_nemotron_count)
+        add_voters(MinimaxVoter, settings.council_minimax_count)
+        
+        # New Voters
+        from agents.groq_agents import GroqCompoundVoter, QwenVoter
+        add_voters(GroqCompoundVoter, settings.council_compound_count)
+        add_voters(QwenVoter, settings.council_qwen_count)
+
+        # Optional voters (default 0)
+        from agents.groq_agents import ContextualVoter, LlamaPromptGuardVoter
+        add_voters(ContextualVoter, settings.council_contextual_count)
+        add_voters(LlamaPromptGuardVoter, settings.council_prompt_guard_count)
+
+        logger.info(f"Detection Council initialized with {len(self.voters)} voters: "
+                    f"Scout={settings.council_scout_count}, GPT-OSS={settings.council_gpt_oss_count}, "
+                    f"Nemotron={settings.council_nemotron_count}, Minimax={settings.council_minimax_count}, "
+                    f"Contextual={settings.council_contextual_count}, Guard={settings.council_prompt_guard_count}")
 
     async def analyze(
         self,
@@ -64,16 +85,11 @@ class DetectionCouncil:
         for i, res in enumerate(results):
             if isinstance(res, Exception):
                 logger.error(f"Voter {self.voters[i].__class__.__name__} failed: {res}")
-                votes.append(
-                    CouncilVote(
-                        agent_name=self.voters[i].__class__.__name__,
-                        is_scam=False,
-                        confidence=0.0,
-                        reasoning=f"Voter error: {str(res)[:100]}",
-                        scam_type="error",
-                        extracted_intelligence={},
-                    )
-                )
+                # User requested NULL for failed agents, so we skip adding a vote
+                continue
+            elif res is None:
+                logger.warning(f"Voter {self.voters[i].__class__.__name__} returned NULL (skipped)")
+                continue
             else:
                 votes.append(res)
 

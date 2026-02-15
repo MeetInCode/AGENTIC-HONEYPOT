@@ -45,6 +45,18 @@ class Settings(BaseSettings):
         default="openai/gpt-oss-120b",
         alias="GROQ_MODEL_GPT_OSS"
     )
+
+    # Council Member (Groq Compound)
+    groq_model_compound: str = Field(
+        default="groq/compound",
+        alias="GROQ_MODEL_COMPOUND"
+    )
+
+    # Council Member (Qwen)
+    groq_model_qwen: str = Field(
+        default="qwen/qwen3-32b",
+        alias="GROQ_MODEL_QWEN"
+    )
     
     # ── NVIDIA NIM Configuration (per-agent keys) ──
     nvidia_api_key: str = Field(default="", alias="NVIDIA_API_KEY")
@@ -56,6 +68,21 @@ class Settings(BaseSettings):
     
     council_nemotron_api_key: str = Field(default="", alias="COUNCIL_NEMOTRON_API_KEY")
     council_minimax_api_key: str = Field(default="", alias="COUNCIL_MINIMAX_API_KEY")
+
+    # Council Member 3 (Nemotron)
+    nvidia_model_nemotron: str = Field(
+        default="nvidia/llama-3.3-nemotron-super-49b-v1",
+        alias="NVIDIA_MODEL_NEMOTRON"
+    )
+    # Council Voter Counts (User Adjustable)
+    council_scout_count: int = Field(default=2, alias="COUNCIL_SCOUT_COUNT")
+    council_gpt_oss_count: int = Field(default=1, alias="COUNCIL_GPT_OSS_COUNT")
+    council_nemotron_count: int = Field(default=1, alias="COUNCIL_NEMOTRON_COUNT")
+    council_minimax_count: int = Field(default=1, alias="COUNCIL_MINIMAX_COUNT")
+    council_compound_count: int = Field(default=0, alias="COUNCIL_COMPOUND_COUNT")
+    council_qwen_count: int = Field(default=0, alias="COUNCIL_QWEN_COUNT")
+    council_contextual_count: int = Field(default=0, alias="COUNCIL_CONTEXTUAL_COUNT")
+    council_prompt_guard_count: int = Field(default=0, alias="COUNCIL_PROMPT_GUARD_COUNT")
 
     # Council Member 3 (Nemotron)
     nvidia_model_nemotron: str = Field(
@@ -83,6 +110,18 @@ class Settings(BaseSettings):
     scam_confidence_threshold: float = Field(default=0.6, alias="SCAM_CONFIDENCE_THRESHOLD")
     
     
+    # ── Worker Pool ──
+    worker_pool_size: int = Field(
+        default=4,
+        alias="WORKER_POOL_SIZE",
+        description="Number of logical async workers for background intel processing"
+    )
+    council_delay_seconds: float = Field(
+        default=3.0,
+        alias="COUNCIL_DELAY_SECONDS",
+        description="Seconds to wait before sending to LLM council when conversation history is empty"
+    )
+
     # ── Server ──
     port: int = Field(default=8000, alias="PORT")
     debug: bool = Field(default=False, alias="DEBUG")

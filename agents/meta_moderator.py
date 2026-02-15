@@ -3,6 +3,7 @@ Meta Moderator (The Judge) — Aggregates council votes into a final verdict.
 """
 
 import json
+import os
 import logging
 import re
 from typing import List, Dict, Any, Optional
@@ -15,44 +16,7 @@ from utils.key_manager import get_next_groq_key
 
 logger = logging.getLogger(__name__)
 
-JUDGE_PROMPT = """
-You are producing the FINAL ASSESSMENT from agent reports for a honeypot system.
 
-## Agent Reports
-{votes_json}
-
-## Rules
-1. **scamDetected**: true if >50% agents vote scam AND at least 2 vote scam. If tied, default to false.
-2. **confidence**: Average confidence of scam voters (0.0-1.0). If not scam, use 0.0-0.2.
-3. **scamType**: Most common type from scam voters, or "safe".
-4. **totalMessagesExchanged**: {total_msg_count}
-5. **extractedIntelligence**: Merge from all agents with STRICT rules:
-   - **NEVER fabricate data.** Only include items that appear VERBATIM in the original conversation MESSAGES (not from agent analysis).
-   - **bankAccounts**: Only actual account numbers (digits only, e.g. "1234567890"). Do NOT include masked versions like "XXXXXXX1234" or descriptions like "ending in 1234".
-   - **upiIds**: Must contain @ (e.g. user@ybl). Exclude anything without @.
-   - **phishingLinks**: Must start with http:// or https://. Do NOT include text like "Click here" or "claim your prize".
-   - **phoneNumbers**: Indian format only (10 digits or +91XXXXXXXXXX).
-   - **suspiciousKeywords**: Max 5-7 unique keywords. Remove near-duplicates (keep shortest form).
-   - **If scamDetected is false**: set suspiciousKeywords to [] (empty array).
-6. **agentNotes**: 2-3 line professional summary (max 300 chars). Never mention "council", "votes", "agents", or internal processes.
-
-## Output (ONLY valid JSON, nothing else)
-{{
-  "sessionId": "{session_id}",
-  "scamDetected": true,
-  "confidence": 0.85,
-  "scamType": "payment_fraud",
-  "totalMessagesExchanged": {total_msg_count},
-  "extractedIntelligence": {{
-    "bankAccounts": [],
-    "upiIds": ["example@ybl"],
-    "phishingLinks": [],
-    "phoneNumbers": [],
-    "suspiciousKeywords": ["urgent", "verify"]
-  }},
-  "agentNotes": "Payment fraud detected. Scammer used urgency tactics requesting UPI transfer. Extracted UPI ID and suspicious keywords."
-}}
-"""
 
 class JudgeAgent:
     """Aggregates multiple agent votes into a single authoritative verdict."""
@@ -62,6 +26,23 @@ class JudgeAgent:
         self.model = settings.groq_model_judge
         # Fallback to general Groq key if judge-specific key not set
         self.api_key = settings.judge_agent_api_key or settings.groq_api_key
+        
+        # Load prompt from file
+        self.prompt_path = os.path.join(os.path.dirname(__file__), "..", "prompts", "judge_agent.md")
+        self.judge_prompt = self._load_prompt()
+
+    def _load_prompt(self) -> str:
+        """Load the judge prompt from the markdown file."""
+        try:
+            if os.path.exists(self.prompt_path):
+                with open(self.prompt_path, "r", encoding="utf-8") as f:
+                    return f.read()
+            else:
+                logger.error(f"Judge prompt file not found at {self.prompt_path}")
+                return "You are a helpful assistant." # Fallback
+        except Exception as e:
+            logger.error(f"Failed to load judge prompt: {e}")
+            return "You are a helpful assistant."
 
     async def adjudication(
         self,
@@ -75,7 +56,7 @@ class JudgeAgent:
         """
         # 1. Prepare input for LLM
         votes_data = [v.model_dump() for v in votes]
-        prompt = JUDGE_PROMPT.format(
+        prompt = self.judge_prompt.format(
             votes_json=json.dumps(votes_data, indent=2),
             session_id=session_id,
             total_msg_count=total_msg_count
@@ -256,8 +237,8 @@ class JudgeAgent:
         }
 
     @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=1, max=4),
+        stop=stop_after_attempt(15),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
         reraise=True,
     )
     async def _call_groq(self, prompt: str) -> Dict[str, Any]:

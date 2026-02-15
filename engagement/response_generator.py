@@ -24,12 +24,7 @@ class ResponseGenerator:
         self._preferred_api_key = settings.reply_agent_api_key or settings.groq_api_key
         
         # Load prompt from file
-        self.prompt_path = os.path.join(
-            os.path.dirname(__file__), 
-            "..", 
-            "prompts", 
-            "FINAL_reply_agent_prompt.md"
-        )
+        self.prompt_path = os.path.join(os.path.dirname(__file__), "..", "prompts", "reply_agent.md")
         self.system_prompt = self._load_system_prompt()
 
     def _load_system_prompt(self) -> str:
@@ -101,8 +96,8 @@ class ResponseGenerator:
 
 
     @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=1, max=4),
+        stop=stop_after_attempt(15),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
         reraise=True,
     )
     async def _call_groq(self, messages: list) -> dict:

@@ -42,8 +42,9 @@ async def lifespan(app: FastAPI):
     logger.info("🍯 Agentic Honeypot starting up")
     logger.info(f"   Endpoint: POST /honeypot/message")
     logger.info(f"   Callback: {settings.guvi_callback_url}")
-    logger.info(f"   Inactivity timeout: {settings.inactivity_timeout_seconds}s")
-    logger.info(f"   NVIDIA models: nemotron, deepseek-v3, minimax-m2")
+    logger.info(f"   Worker pool: {settings.worker_pool_size} workers")
+    logger.info(f"   Council delay (empty history): {settings.council_delay_seconds}s")
+    logger.info(f"   NVIDIA models: nemotron, minimax-m2")
     logger.info(f"   Groq models: llama-4-scout, gpt-oss-120b")
     logger.info("=" * 60)
     yield
@@ -88,12 +89,20 @@ async def global_exception_handler(request: Request, exc: Exception):
 # Health endpoint
 @app.get("/health", tags=["Health"])
 async def health_check():
-    """Health check endpoint."""
-    return {
+    """Health check endpoint with worker pool status."""
+    from api.honeypot import get_orchestrator
+    result = {
         "status": "ok",
         "service": "agentic-honeypot",
-        "version": "2.0.0",
+        "version": "2.1.0",
     }
+    try:
+        orch = get_orchestrator()
+        if orch and hasattr(orch, 'worker_pool'):
+            result["worker_pool"] = orch.worker_pool.status()
+    except Exception:
+        pass
+    return result
 
 
 # Mount honeypot router (no prefix — endpoint is /honeypot/message)
@@ -104,10 +113,12 @@ app.include_router(honeypot_router)
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", settings.port))
-    workers = int(os.environ.get("WORKERS", 4))
     
-    # Production: Use multiple workers for better concurrency
-    # Development: Single worker with reload
+    # IMPORTANT: Always use 1 Uvicorn process.
+    # Concurrency is handled by the async WorkerPool (4 slots) inside the
+    # single event loop.  Multiple Uvicorn processes would each get their
+    # own isolated WorkerPool, breaking session tracking, abort, and the
+    # 3-second council delay logic.
     if settings.debug:
         uvicorn.run(
             "main:app",
@@ -117,12 +128,11 @@ if __name__ == "__main__":
             log_level=settings.log_level.lower(),
         )
     else:
-        # Production mode: multiple workers for concurrent request handling
         uvicorn.run(
             "main:app",
             host="0.0.0.0",
             port=port,
-            workers=workers,
+            workers=1,  # Single process — WorkerPool handles concurrency
             log_level=settings.log_level.lower(),
             access_log=True,
         )

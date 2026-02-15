@@ -1,0 +1,19 @@
+Checking prompt loading...
+Project root: C:\Users\Asus\Desktop\GUVI\agentic_honeypot
+Prompts dir: C:\Users\Asus\Desktop\GUVI\agentic_honeypot\prompts
+[OK] Found reply_agent.md
+[OK] Found judge_agent.md
+[OK] Found council_minimax.md
+[OK] Found council_nemotron.md
+[OK] Found council_gpt_oss.md
+[OK] Found council_prompt_guard.md
+[OK] Found council_scout.md
+[OK] Found council_contextual.md
+
+All prompt files found.
+
+Attempting to import agent modules to check for syntax/import errors...
+[OK] Imported agents.groq_agents
+[OK] Imported agents.nvidia_agents
+[OK] Imported agents.meta_moderator
+[OK] Imported engagement.response_generator

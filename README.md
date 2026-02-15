@@ -49,15 +49,16 @@ graph TD
 
 ## 🧪 Detection Council Members
 
-The "Brain" of the honeypot consists of 5 independent agents running in parallel:
+The "Brain" of the honeypot runs **5 concurrent voters** by default (configurable via `.env`):
 
 | Agent | Model Provider | Model | Specialty |
 | :--- | :--- | :--- | :--- |
-| **NemotronVoter** | NVIDIA | `nemotron-3-8b` | **Bank Fraud Safety**: Expert in Indian banking scams, KYC fraud, and OTP theft. |
-| **MultilingualVoter** | NVIDIA | `nemotron-multilingual` | **Language Safety**: Handles Hinglish and regional language threats. |
-| **MinimaxVoter** | NVIDIA | `minimax-m2` | **Linguistics**: Analyzes tone, urgency, and social engineering patterns. |
-| **LlamaScoutVoter** | Groq | `llama-4-scout` | **Realism & Anomalies**: Spots bot-like templates vs human scammers. |
-| **GptOssVoter** | Groq | `gpt-oss-120b` | **Scam Strategy**: Identifies specific playbooks (Digital Arrest, Job Scam, etc.). |
+| **NemotronVoter** | NVIDIA | `nvidia/llama-3.3-nemotron-super-49b-v1` | **Shield & Safety**: Expert in identifying harmful or fraudulent content. |
+| **MinimaxVoter** | NVIDIA | `minimaxai/minimax-m2.1` | **Linguistics**: Analyzes tone, urgency, and social engineering patterns. |
+| **LlamaScoutVoter** | Groq | `meta-llama/llama-4-scout-17b-16e-instruct` | **Realism & Anomalies**: Spots bot-like templates vs human scammers. (Runs 2 instances by default) |
+| **GptOssVoter** | Groq | `openai/gpt-oss-120b` | **Scam Strategy**: Identifies specific playbooks (Digital Arrest, Job Scam, etc.). |
+
+> **Note**: `GroqCompoundVoter` and `QwenVoter` are also available but disabled by default (set `COUNCIL_COMPOUND_COUNT=1` or `COUNCIL_QWEN_COUNT=1` to enable).
 
 ## 🚀 Quick Start
 
@@ -90,7 +91,6 @@ Copy the example environment file and add your keys:
 cp .env.example .env
 ```
 
-Edit `.env`:
 ```ini
 # API Security
 API_SECRET_KEY=your_secret_key_here
@@ -99,19 +99,29 @@ API_SECRET_KEY=your_secret_key_here
 GROQ_API_KEY=gsk_...
 NVIDIA_API_KEY=nvapi-...
 
-# Optional: Multiple keys for load balancing (comma-separated)
-GROQ_API_KEYS=gsk_key1,gsk_key2,gsk_key3
-NVIDIA_API_KEYS=nvapi_key1,nvapi_key2
+# Optional: Dedicated Agent Keys
+COUNCIL_LLAMA_SCOUT_API_KEY=...
+COUNCIL_GPT_OSS_API_KEY=...
+COUNCIL_NEMOTRON_API_KEY=...
+COUNCIL_MINIMAX_API_KEY=...
 
-# Timeout Configuration (seconds)
-TIMEOUT_SHORT=5          # Single message sessions
-TIMEOUT_LONG=10         # Sessions with conversation history
-HARD_DEADLINE=35        # Maximum time before forced callback
-DISPATCHER_INTERVAL=1.0 # Callback dispatcher check interval
+# Council Configuration (Number of Voters)
+COUNCIL_SCOUT_COUNT=2
+COUNCIL_GPT_OSS_COUNT=1
+COUNCIL_NEMOTRON_COUNT=1
+COUNCIL_MINIMAX_COUNT=1
+COUNCIL_COMPOUND_COUNT=0
+COUNCIL_QWEN_COUNT=0
+
+# Application Settings
+INACTIVITY_TIMEOUT_SECONDS=20
+MAX_CONVERSATION_TURNS=20
+SCAM_CONFIDENCE_THRESHOLD=0.6
+COUNCIL_DELAY_SECONDS=3.0
 
 # Server Configuration
 PORT=8000
-WORKERS=4                # Number of worker processes (production: 4+)
+WORKERS=4                # Number of background worker tasks
 DEBUG=false
 LOG_LEVEL=INFO
 

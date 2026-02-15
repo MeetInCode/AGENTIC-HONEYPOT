@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import itertools
 import threading
+import random
 from typing import Dict, Iterable, List, Optional
 
 from config.settings import get_settings
@@ -56,6 +57,7 @@ def _init_groq_cycle() -> None:
         keys = _parse_keys(settings.groq_api_key)
 
     if keys:
+        random.shuffle(keys)  # Randomize to prevent workers from locking onto the same key order
         _groq_cycle = itertools.cycle(keys)
         _logger.info(f"Groq round-robin pool initialised with {len(keys)} key(s)")
     else:

@@ -92,9 +92,14 @@ Extract these entities from BOTH scammer messages AND honeypot replies:
    - Examples: "+919876543210", "9876543210", "98765-43210"
 
 5. SUSPICIOUS KEYWORDS:
-   - Extract 5-10 most significant urgency/threat words
-   - Examples: "urgent", "blocked", "verify", "immediately", "arrested"
-   - Focus on: action demands, threats, authority terms
+   - Extract 5-7 most significant urgency/threat words. No near-duplicates.
+   - Examples: "urgent", "blocked", "verify", "immediately"
+   - If scamDetected is false, return [] empty array.
+
+CRITICAL: NEVER fabricate data. Only extract items that appear VERBATIM in the conversation messages.
+- UPI IDs must contain @.
+- Phishing links must be actual URLs starting with http/https (NO SPACES).
+- Bank accounts must be digits only (no masked XXXXX).
 
 OUTPUT FORMAT (MANDATORY):
 
@@ -212,6 +217,12 @@ Extract with PRECISION and COMPLETENESS:
    - Financial: "pay", "payment", "transfer", "deposit"
    - Action: "click", "download", "install", "send"
    - Verification: "OTP", "PIN", "password", "CVV"
+   - Max 5-7 keywords. If scamDetected is false, return [] empty array.
+
+CRITICAL: NEVER fabricate data. Only extract items that appear VERBATIM in the conversation messages.
+- UPI IDs must contain @.
+- Phishing links must be actual URLs starting with http/https (NO SPACES).
+- Bank accounts must be digits only (no masked XXXXX).
 
 OUTPUT FORMAT (MANDATORY):
 
@@ -330,6 +341,12 @@ Extract entities while understanding their strategic purpose:
    - Primary tactic used
    - Adaptation observed
 
+CRITICAL: NEVER fabricate data. Only extract items that appear VERBATIM in the conversation messages.
+- UPI IDs must contain @.
+- Phishing links must be actual URLs starting with http/https (NO SPACES).
+- Bank accounts must be digits only (no masked XXXXX).
+- keywords: max 5-7, no duplicates. Empty if safe.
+
 OUTPUT FORMAT (MANDATORY):
 
 {
@@ -436,7 +453,9 @@ OUTPUT FORMAT (MANDATORY):
 CRITICAL RULES:
 - Optimize for SPEED over depth
 - High confidence only when clear indicators present
-- Extract obvious entities, don't search deeply
+- Extract obvious entities VERBATIM. NEVER fabricate.
+- UPI IDs must contain @. Links must start with http/https.
+- Bank accounts digits only. Keywords max 5-7.
 - Notes should be brief (under 60 characters)
 - Focus on BINARY classification first, entities second
 - Process in under 100ms when possible
@@ -523,6 +542,12 @@ Extract entities revealed due to honeypot's stalling tactics:
    - Urgency increases: "now", "immediately", "quickly"
    - Pressure tactics: "or else", "otherwise", "last chance"
    - Reassurance: "don't worry", "trust me", "I'll help"
+   - Max 5-7, no duplicates. Empty [] if not scam.
+
+CRITICAL: NEVER fabricate data. Only extract items that appear VERBATIM in the conversation messages.
+- UPI IDs must contain @.
+- Phishing links must be actual URLs starting with http/https (NO SPACES).
+- Bank accounts must be digits only.
 
 OUTPUT FORMAT (MANDATORY):
 
@@ -635,6 +660,12 @@ Extract entities with FULL CONTEXT:
    - Words that mean different things in context
    - Euphemisms for payment
    - Code words for restricted actions
+   - Max 5-7. Empty [] if not scam.
+
+CRITICAL: NEVER fabricate data. Only extract items that appear VERBATIM in the conversation messages.
+- UPI IDs must contain @.
+- Phishing links must be actual URLs starting with http/https (NO SPACES).
+- Bank accounts must be digits only.
 
 OUTPUT FORMAT (MANDATORY):
 

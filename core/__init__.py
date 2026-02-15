@@ -1,3 +1,4 @@
 """Core package."""
 from core.orchestrator import HoneypotOrchestrator
-__all__ = ["HoneypotOrchestrator"]
+from core.worker_pool import WorkerPool
+__all__ = ["HoneypotOrchestrator", "WorkerPool"]
