@@ -2,6 +2,10 @@
 
 An AI-powered honeypot system that detects scam messages, engages scammers autonomously using LLM-based agents, and extracts actionable intelligence.
 
+<img width="1535" height="1600" alt="image" src="https://github.com/user-attachments/assets/8331db1c-66d7-4ebf-97d9-6a0e0f624bf2" />
+<img width="1109" height="403" alt="image" src="https://github.com/user-attachments/assets/28d45785-efff-46ac-917a-53e9913d85a9" />
+
+
 ## 📋 Overview
 
 This system implements a single-endpoint API (`POST /honeypot/message`) that:
@@ -10,6 +14,7 @@ This system implements a single-endpoint API (`POST /honeypot/message`) that:
 3.  **Reports to Core**: Sends a mandatory final callback with aggregated intelligence to the GUVI evaluation endpoint.
 
 Built for the GUVI Hackathon challenge.
+
 
 ### Key Features
 
@@ -248,6 +253,11 @@ agentic_honeypot/
 -   **Validation**: Pydantic
 -   **Network**: HTTPX
 
+
+<img width="1500" height="686" alt="image" src="https://github.com/user-attachments/assets/0dd58b8e-e673-4709-89fa-7b72f112b2a4" />
+
 ## 📄 License
+
+
 
 MIT License - Built for GUVI Hackathon 2024
