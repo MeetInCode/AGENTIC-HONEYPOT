@@ -123,11 +123,8 @@ class HoneypotOrchestrator:
 
         # Build response
         response_obj = HoneypotResponse(
-            sessionId=request.sessionId,
             status="success",
             reply=reply,
-            scamDetected=session.is_scam_detected,
-            confidence=session.scam_confidence,
         )
 
         elapsed = time.time() - pipeline_start

@@ -23,11 +23,8 @@ class HoneypotRequest(BaseModel):
     metadata: Optional[Metadata] = None
 
 class HoneypotResponse(BaseModel):
-    sessionId: str
     status: str = Field(default="success")
     reply: Optional[str] = None
-    scamDetected: bool
-    confidence: float
 
 # ─── 2. Internal State ────────────────────────────────────────────
 

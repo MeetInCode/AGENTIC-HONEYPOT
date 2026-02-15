@@ -108,10 +108,8 @@ async def process_message(
         response = await orchestrator.process_message(sanitized_request)
 
         logger.info(
-            f"Response: session={response.sessionId}, "
+            f"Response: session={request.sessionId}, "
             f"status={response.status}, "
-            f"scamDetected={response.scamDetected}, "
-            f"confidence={response.confidence:.2f}, "
             f"reply='{(response.reply or '')[:60]}...'"
         )
 

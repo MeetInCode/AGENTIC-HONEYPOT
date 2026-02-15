@@ -181,11 +181,8 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
 **Response (Immediate):**
 ```json
 {
-  "sessionId": "unique-session-id",
   "status": "success",
-  "reply": "Oh no! Why is it blocked? I am scared.",
-  "scamDetected": true,
-  "confidence": 0.95
+  "reply": "send me your upiid lemme share Rs.1 and confirm"
 }
 ```
 
