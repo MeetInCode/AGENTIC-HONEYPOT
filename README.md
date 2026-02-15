@@ -35,10 +35,10 @@ graph TD
     API -.->|3. Background Task| Orchestrator
     
     subgraph "Async Intelligence Pipeline"
-        Orchestrator --> Council[Detection Council (5 Agents)]
-        Orchestrator --> Extractor[Intel Extractor (Regex + LLM)]
+        Orchestrator --> Council["Detection Council (5 Agents)"]
+        Orchestrator --> Extractor["Intel Extractor (Regex + LLM)"]
         
-        Council -->|Votes| Judge[Judge Agent (Llama 3.3)]
+        Council -->|Votes| Judge["Judge Agent (Llama 3.3)"]
         Extractor -->|Entities| Judge
         
         Judge -->|Final Decision| Callback[Callback Service]
