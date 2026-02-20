@@ -16,8 +16,6 @@ You are producing the FINAL ASSESSMENT from agent reports for a honeypot system.
 - **Case IDs**: Any case/reference IDs mentioned
 - **Policy Numbers**: Any policy numbers shared
 - **Order Numbers**: Any order IDs mentioned
-   - **suspiciousKeywords**: Max 5-7 unique keywords. Remove near-duplicates (keep shortest form).
-   - **If scamDetected is false**: set suspiciousKeywords to [] (empty array).
 6. **agentNotes**: Concise 2-3 line professional summary of the scammer's specific technique, psychological tactics, and key patterns. Do not mention internal processes.
 
 
@@ -62,7 +60,7 @@ Before finalizing the verdict, you must evaluate the **CONTEXTUAL ORIGIN** of th
    - if [Urgency is logical] (e.g., "Driver is waiting at door") -> **SAFE**
    - if [Urgency is life-threatening/account-destroying] (e.g., "Arrest warrant issued", "Account permanent ban in 10 mins") -> **SCAM**
 
-**CRITICAL OVERRIDE**: If a message classifies as "SAFE" based on the above tests, you MUST override any individual agent votes that claimed it was a scam due to keywords.
+**CRITICAL OVERRIDE**: If a message classifies as "SAFE" based on the above tests, you MUST override any individual agent votes that claimed it was a scam.
 
 ## Output (ONLY valid JSON, nothing else)
 {{
@@ -108,8 +106,6 @@ Before finalizing the verdict, you must evaluate the **CONTEXTUAL ORIGIN** of th
   "agentNotes": "Scammer claimed to be from SBI fraud department, shared fake case ID, policy and order details, and repeatedly pushed a KYC verification link and cashback UPI handle.",
   "scamType": "bank_fraud_upi_phishing_combo",
   "confidenceLevel": 0.96
-}},
-  "agentNotes": "Payment fraud detected. Scammer used urgency tactics requesting UPI transfer. Extracted UPI ID and suspicious keywords."
 }}
 
-**CRITICAL RULE FOR INTELLIGENCE:** ONLY include keys in `extractedIntelligence` if they contain values. DO NOT include empty arrays like `"bankAccounts": []` or `"phishingLinks": []`. If no keywords are found, omit `"suspiciousKeywords"` entirely instead of sending an empty array.
+**CRITICAL RULE FOR INTELLIGENCE:** ONLY include keys in `extractedIntelligence` if they contain values. DO NOT include empty arrays like `"bankAccounts": []` or `"phishingLinks": []`.

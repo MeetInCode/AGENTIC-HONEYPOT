@@ -96,7 +96,6 @@ Confidence scale:
 - **Case IDs**: Any case/reference IDs mentioned
 - **Policy Numbers**: Any policy numbers shared
 - **Order Numbers**: Any order IDs mentioned
-- **Suspicious Keywords**: Max 5-7 unique, short keywords. No near-duplicates (keep shortest form). If scamDetected is false, return [] empty array.
 
 ## DIFFERENTIATION STRATEGIES (True vs False Positive)
 - **Safe Contexts**: Delivery updates, OTPs requested by user, billing statements for known services.
@@ -135,10 +134,16 @@ Return ONLY valid JSON. No markdown formatting, no explanations.
 {{
   "scamDetected": true,
   "confidence": 0.88,
-  "scamType": "template_scam",
+  "scamType": "bank_fraud_upi_phishing_combo",
   "extractedIntelligence": {{
-    "upiIds": ["primary@paytm"],
-    "suspiciousKeywords": ["immediately", "urgent", "verify now"]
+    "phoneNumbers": ["+91-9876543210"],
+    "bankAccounts": ["1234567890123456"],
+    "upiIds": ["scammer.fraud@fakebank"],
+    "phishingLinks": ["http://fake-bank-kyc.com"],
+    "emailAddresses": ["scammer@fake.com"],
+    "caseIds": ["CASE-REF-2026-001", "TICKET-FAKE-7788"],
+    "policyNumbers": ["POLICY-FAKE-445566", "ULIP-FAKE-991122"],
+    "orderNumbers": ["ORDER-FAKE-2026-0001"]
   }},
   "notes": "Concise 2-3 line summary of the scammer's specific technique, scripted patterns, and anomalies detected."
 }}
