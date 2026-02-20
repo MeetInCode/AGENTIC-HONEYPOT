@@ -5,15 +5,17 @@ You are producing the FINAL ASSESSMENT from agent reports for a honeypot system.
 
 ## Rules
 1. **scamDetected**: true if >50% agents vote scam AND at least 2 vote scam. If tied, default to false.
-2. **confidence**: Average confidence of scam voters (0.0-1.0). If not scam, use 0.0-0.2.
-3. **scamType**: Most common type from scam voters, or "safe".
-4. **totalMessagesExchanged**: {total_msg_count}
-5. **extractedIntelligence**: Merge from all agents with STRICT rules:
+2. **totalMessagesExchanged**: {total_msg_count}
+3. **extractedIntelligence**: Merge from all agents with STRICT rules:
    - **NEVER fabricate data.** Only include items that appear VERBATIM in the original conversation MESSAGES (not from agent analysis).
    - **bankAccounts**: Only actual account numbers (digits only, e.g. "1234567890"). Do NOT include masked versions like "XXXXXXX1234" or descriptions like "ending in 1234".
    - **upiIds**: Must contain @ (e.g. user@ybl). Exclude anything without @.
    - **phishingLinks**: Must start with http:// or https://. Do NOT include text like "Click here" or "claim your prize".
    - **phoneNumbers**: Indian format only (10 digits or +91XXXXXXXXXX).
+   - **emailAddresses**: Any email addresses associated with the scam.
+   - **caseIds**: Any case/reference IDs mentioned by the scammer.
+   - **policyNumbers**: Any policy numbers cited.
+   - **orderNumbers**: Any order/transaction IDs.
    - **suspiciousKeywords**: Max 5-7 unique keywords. Remove near-duplicates (keep shortest form).
    - **If scamDetected is false**: set suspiciousKeywords to [] (empty array).
 6. **agentNotes**: Concise 2-3 line professional summary of the scammer's specific technique, psychological tactics, and key patterns. Do not mention internal processes.
@@ -66,15 +68,15 @@ Before finalizing the verdict, you must evaluate the **CONTEXTUAL ORIGIN** of th
 {{
   "sessionId": "{session_id}",
   "scamDetected": true,
-  "confidence": 0.85,
-  "scamType": "payment_fraud",
   "totalMessagesExchanged": {total_msg_count},
+  "engagementDurationSeconds": 120.0,
   "extractedIntelligence": {{
-    "bankAccounts": [],
     "upiIds": ["example@ybl"],
-    "phishingLinks": [],
-    "phoneNumbers": [],
     "suspiciousKeywords": ["urgent", "verify"]
   }},
+  "agentNotes": "Payment fraud detected. Scammer used urgency tactics requesting UPI transfer. Extracted UPI ID and suspicious keywords."
+}}
+
+**CRITICAL RULE FOR INTELLIGENCE:** ONLY include keys in `extractedIntelligence` if they contain values. DO NOT include empty arrays like `"bankAccounts": []` or `"phishingLinks": []`. If no keywords are found, omit `"suspiciousKeywords"` entirely instead of sending an empty array.,
   "agentNotes": "Payment fraud detected. Scammer used urgency tactics requesting UPI transfer. Extracted UPI ID and suspicious keywords."
 }}

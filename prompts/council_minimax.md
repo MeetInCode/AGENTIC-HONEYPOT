@@ -83,15 +83,16 @@ Respond ONLY with valid JSON. No markdown, no explanations outside JSON.
 
 {{
   "scamDetected": true,
-  "confidence": 0.92,
-  "scamType": "bank_impersonation",
+  "confidence": 0.88,
+  "scamType": "template_scam",
   "extractedIntelligence": {{
-    "bankAccounts": [],
-    "upiIds": ["scammer@ybl"],
-    "phishingLinks": [],
-    "phoneNumbers": [],
-    "suspiciousKeywords": ["urgent", "account blocked", "KYC expired", "immediately"]
+    "upiIds": ["primary@paytm"],
+    "suspiciousKeywords": ["immediately", "urgent", "verify now"]
   }},
+  "notes": "Concise 2-3 line summary of the scammer's specific technique, scripted patterns, and anomalies detected."
+}}
+
+**CRITICAL RULE FOR INTELLIGENCE:** ONLY include keys in `extractedIntelligence` if they contain values. DO NOT send empty arrays like `"bankAccounts": []` or `"phishingLinks": []`. Omit the key entirely if the intelligence is not found.,
   "notes": "Concise 2-3 line summary of the scammer's specific technique, linguistic patterns, and psychological tactics."
 }}
 

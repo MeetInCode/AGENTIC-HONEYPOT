@@ -34,12 +34,17 @@ class ExtractedIntelligence(BaseModel):
     phishingLinks: List[str] = Field(default_factory=list)
     phoneNumbers: List[str] = Field(default_factory=list)
     suspiciousKeywords: List[str] = Field(default_factory=list)
+    emailAddresses: List[str] = Field(default_factory=list)
+    caseIds: List[str] = Field(default_factory=list)
+    policyNumbers: List[str] = Field(default_factory=list)
+    orderNumbers: List[str] = Field(default_factory=list)
 
 class AgentOutput(BaseModel):
     """Strict JSON output format for all council agents."""
     sessionId: str
     scamDetected: bool
     totalMessagesExchanged: Optional[int] = 0
+    engagementDurationSeconds: Optional[float] = 0.0
     extractedIntelligence: ExtractedIntelligence
     agentNotes: str
 
@@ -93,5 +98,6 @@ class CallbackPayload(BaseModel):
     sessionId: str
     scamDetected: bool
     totalMessagesExchanged: int
+    engagementDurationSeconds: Optional[float] = None
     extractedIntelligence: ExtractedIntelligence
     agentNotes: str

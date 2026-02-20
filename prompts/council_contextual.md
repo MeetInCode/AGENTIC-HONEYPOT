@@ -43,14 +43,16 @@ OUTPUT FORMAT (MANDATORY):
 Respond ONLY with a valid JSON object.
 {{
   "scamDetected": true,
-  "confidence": 0.92,
+  "confidence": 0.88,
+  "scamType": "template_scam",
   "extractedIntelligence": {{
-    "bankAccounts": [],
-    "upiIds": ["merchant@paytm"],
-    "phishingLinks": ["http://verify-now.com"],
-    "phoneNumbers": [],
-    "suspiciousKeywords": ["verification fee", "processing charge"]
+    "upiIds": ["primary@paytm"],
+    "suspiciousKeywords": ["immediately", "urgent", "verify now"]
   }},
+  "notes": "Concise 2-3 line summary of the scammer's specific technique, scripted patterns, and anomalies detected."
+}}
+
+**CRITICAL RULE FOR INTELLIGENCE:** ONLY include keys in `extractedIntelligence` if they contain values. DO NOT send empty arrays like `"bankAccounts": []` or `"phishingLinks": []`. Omit the key entirely if the intelligence is not found.,
   "notes": "Concise 2-3 line summary of the scammer's specific technique and context-based red flags."
 }}
 

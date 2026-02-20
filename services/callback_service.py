@@ -36,7 +36,7 @@ class CallbackService:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.post(
                     self.callback_url,
-                    json=payload.model_dump(),
+                    json=payload.model_dump(exclude_unset=True, exclude_defaults=True),
                     headers={"Content-Type": "application/json"},
                 )
                 
@@ -48,7 +48,7 @@ class CallbackService:
                 # ── Rich Print: Callback Payload ──
                 # ── Rich Print: Callback Payload ──
                 print_callback_payload(
-                    payload=payload.model_dump(),
+                    payload=payload.model_dump(exclude_unset=True, exclude_defaults=True),
                     elapsed=callback_elapsed,
                     status=status_code,
                 )
@@ -65,7 +65,7 @@ class CallbackService:
             # Still print what we tried to send
             # Still print what we tried to send
             print_callback_payload(
-                payload=payload.model_dump(),
+                payload=payload.model_dump(exclude_unset=True, exclude_defaults=True),
                 elapsed=callback_elapsed,
                 status=status_code or 0,
             )
@@ -84,17 +84,25 @@ class CallbackService:
         # Use Judge's final payload if available (Strict Mode)
         if session.final_callback_payload:
             payload_dict = session.final_callback_payload.copy()
-            # Ensure totalMessagesExchanged is correct (use actual message count)
-            total_msgs = len(session.messages)
-            payload_dict["totalMessagesExchanged"] = total_msgs
+            # If payload_dict already has the correct total messages from the judge, keep it. 
+            # Otherwise fallback to length of messages
+            if "totalMessagesExchanged" not in payload_dict:
+                payload_dict["totalMessagesExchanged"] = len(session.messages)
             
-            # Strict filtering for extractedIntelligence
+            payload_dict["engagementDurationSeconds"] = round(duration, 2)
+            
+            # Use judge's scam detection value, or fallback to session state
+            is_scam = payload_dict.get("scamDetected", session.is_scam_detected)
+            
+            # Strict filtering for extractedIntelligence - allow new evaluation fields
             if "extractedIntelligence" in payload_dict:
                 raw_intel = payload_dict["extractedIntelligence"]
                 filtered_intel = {
                     k: v for k, v in raw_intel.items() 
-                    if k in {"bankAccounts", "upiIds", "phishingLinks", "phoneNumbers", "suspiciousKeywords"}
+                    if k in {"bankAccounts", "upiIds", "phishingLinks", "phoneNumbers", "suspiciousKeywords", "emailAddresses", "caseIds", "policyNumbers", "orderNumbers"}
                 }
+                # Remove empty lists from intel payload
+                filtered_intel = {k: v for k, v in filtered_intel.items() if v}
                 payload_dict["extractedIntelligence"] = filtered_intel
                 
             # Ensure strict adherence to user schema (no conversationLog)
@@ -107,8 +115,10 @@ class CallbackService:
             raw_intel = session.extracted_intelligence
             filtered_intel = {
                 k: v for k, v in raw_intel.items() 
-                if k in {"bankAccounts", "upiIds", "phishingLinks", "phoneNumbers", "suspiciousKeywords"}
+                if k in {"bankAccounts", "upiIds", "phishingLinks", "phoneNumbers", "suspiciousKeywords", "emailAddresses", "caseIds", "policyNumbers", "orderNumbers"}
             }
+            # Remove empty lists from intel payload
+            filtered_intel = {k: v for k, v in filtered_intel.items() if v}
             
             # Calculate total messages exchanged (scammer + agent messages)
             total_msgs = len(session.messages)
@@ -117,8 +127,9 @@ class CallbackService:
                 "sessionId": session.session_id,
                 "scamDetected": session.is_scam_detected,
                 "totalMessagesExchanged": total_msgs,
+                "engagementDurationSeconds": round(duration, 2),
                 "extractedIntelligence": filtered_intel,
-                "agentNotes": verdict.reasoning if verdict else "No verdict available"
+                "agentNotes": verdict.reasoning if verdict else "No verdict available",
             }
         
         # Log before sending
@@ -133,7 +144,8 @@ class CallbackService:
                     sessionId=payload_dict.get("sessionId", session.session_id),
                     scamDetected=bool(payload_dict.get("scamDetected", False)),
                     totalMessagesExchanged=int(payload_dict.get("totalMessagesExchanged", len(session.messages))),
-                    extractedIntelligence=ExtractedIntelligence(),
+                    engagementDurationSeconds=float(payload_dict.get("engagementDurationSeconds", round(duration, 2))),
+                    extractedIntelligence=ExtractedIntelligence(**filtered_intel) if 'filtered_intel' in locals() else ExtractedIntelligence(),
                     agentNotes=str(payload_dict.get("agentNotes", "Payload validation fallback")),
                 )
             except Exception as e2:

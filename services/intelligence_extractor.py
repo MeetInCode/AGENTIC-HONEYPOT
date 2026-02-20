@@ -60,8 +60,11 @@ Entity types you extract:
 - Bank accounts: 9-18 digit account numbers, IFSC codes (format: ABCD0XXXXXX)
 - Phishing links: suspicious URLs, especially non-official domains (.xyz, .tk, .ml, .click, shortened URLs, fake-bank domains)
 - Email addresses: associated with scam communications
-- Scammer identifiers: names, designations, fake departments, badge/ID numbers (e.g. "Officer Rahul", "Cyber Crime Division", "Inspector Vikram", "Case #CC-2024-8845")
+- Scammer identifiers: names, designations, fake departments, badge/ID numbers (e.g. "Officer Rahul", "Cyber Crime Division", "Inspector Vikram")
 - Keywords: urgency words, threats, authority claims, sensitive data requests (KYC, OTP, PIN, CVV, Aadhar, PAN, refunds, "account blocked", "KYC expired", "FIR", "warrant")
+- Case IDs: any case or reference IDs mentioned
+- Policy Numbers: any policy numbers shared
+- Order Numbers: any order IDs mentioned
 
 Always respond with valid JSON only. Never invent entities that do not appear in the conversation."""
 
@@ -86,7 +89,10 @@ Extraction: {{
   "phishingLinks": ["http://cybercase-pay.xyz/settle"],
   "emailAddresses": [],
   "suspiciousKeywords": ["Cyber Crime Division", "case filed", "Aadhar", "money laundering", "penalty", "arrest warrant"],
-  "scammerIdentifiers": ["Officer Rahul", "Cyber Crime Division", "Case #CC-2024-8845"]
+  "scammerIdentifiers": ["Officer Rahul", "Cyber Crime Division"],
+  "caseIds": ["CC-2024-8845"],
+  "policyNumbers": [],
+  "orderNumbers": []
 }}
 
 ## YOUR EXTRACTION
@@ -98,7 +104,10 @@ Extract every identifiable entity from the conversation above. Only include item
   "phishingLinks": [],
   "emailAddresses": [],
   "suspiciousKeywords": [],
-  "scammerIdentifiers": []
+  "scammerIdentifiers": [],
+  "caseIds": [],
+  "policyNumbers": [],
+  "orderNumbers": []
 }}"""
 
 
@@ -165,6 +174,9 @@ class IntelligenceExtractor:
             "emailAddresses": emails,
             "suspiciousKeywords": keywords_found,
             "scammerIdentifiers": [],
+            "caseIds": [],
+            "policyNumbers": [],
+            "orderNumbers": [],
         }
 
     async def _llm_extract(self, messages: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -204,7 +216,8 @@ class IntelligenceExtractor:
         """Merge regex and LLM results, deduplicating."""
         merged = {}
         all_keys = ["upiIds", "phoneNumbers", "bankAccounts", "phishingLinks",
-                     "emailAddresses", "suspiciousKeywords", "scammerIdentifiers"]
+                     "emailAddresses", "suspiciousKeywords", "scammerIdentifiers",
+                     "caseIds", "policyNumbers", "orderNumbers"]
 
         for key in all_keys:
             regex_items = set(regex_intel.get(key, []))

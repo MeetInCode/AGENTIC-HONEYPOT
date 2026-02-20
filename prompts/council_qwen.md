@@ -120,12 +120,13 @@ Return ONLY valid JSON. No markdown, no explanations.
   "confidence": 0.88,
   "scamType": "template_scam",
   "extractedIntelligence": {{
-    "bankAccounts": [],
     "upiIds": ["primary@paytm"],
-    "phishingLinks": [],
-    "phoneNumbers": [],
     "suspiciousKeywords": ["immediately", "urgent", "verify now"]
   }},
+  "notes": "Concise 2-3 line summary of the scammer's specific technique, scripted patterns, and anomalies detected."
+}}
+
+**CRITICAL RULE FOR INTELLIGENCE:** ONLY include keys in `extractedIntelligence` if they contain values. DO NOT send empty arrays like `"bankAccounts": []` or `"phishingLinks": []`. Omit the key entirely if the intelligence is not found.,
   "notes": "Concise 2-3 line summary of the scammer's specific technique, scripted patterns, and anomalies detected."
 }}
 

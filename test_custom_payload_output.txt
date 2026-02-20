@@ -1,0 +1,264 @@
+
+================================================================================
+≡ƒÜÇ Sending custom payload from user to HoneypotOrchestrator
+================================================================================
+
+
+ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ ≡ƒô¿  INCOMING MESSAGE ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+  Session       uuid-v4-string  
+  Turn          1               
+  Channel       SMS             
+  Sender        scammer         
+
+                                  Message Text                                   
+  URGENT: Your account has been compromised. my phone number is +91-9876543210   
+  and my email is scammer@fakeupi , please click on link                         
+  http://fake-bank-kyc.com                                                       
+                                                                                 
+ΓöîΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ ≡ƒôÑ Raw Request JSON ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÉ
+Γöé {                                                                             Γöé
+Γöé   "sessionId": "uuid-v4-string",                                              Γöé
+Γöé   "message": {                                                                Γöé
+Γöé     "sender": "scammer",                                                      Γöé
+Γöé     "text": "URGENT: Your account has been compromised. my phone number is    Γöé
+Γöé +91-9876543210 and my email is scammer@fakeupi , please click on link         Γöé
+Γöé http://fake-bank-kyc.com"                                                     Γöé
+Γöé   }                                                                           Γöé
+Γöé }                                                                             Γöé
+ΓööΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÿ
+
+ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ ≡ƒÆ¼  AGENT RESPONSE ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+ΓòöΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòù
+Γòæ Persona: Ramesh Kumar                                                         Γòæ
+Γòæ                                                                               Γòæ
+Γòæ arrey what happened? link not opening... send on whatsapp? what's your        Γòæ
+Γòæ whatsapp number?                                                              Γòæ
+ΓòÜΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓò¥
+  ΓÅ▒  Response generated in 0.75s
+
+ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ ≡ƒôñ  API RESPONSE SENT ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+ΓöîΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ Response JSON ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÉ
+Γöé {                                                                             Γöé
+Γöé   "status": "success",                                                        Γöé
+Γöé   "reply": "arrey what happened? link not opening... send on whatsapp? what's Γöé
+Γöé your whatsapp number?"                                                        Γöé
+Γöé }                                                                             Γöé
+ΓööΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÿ
+  ΓÅ▒  Total reply latency: 0.76s
+
+ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ ≡ƒƒó  Reply sent for uuid-v4-string in 0.76s ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+≡ƒôñ Immediate Reply JSON:
+{
+  "status": "success",
+  "reply": "arrey what happened? link not opening... send on whatsapp? what's your whatsapp number?"
+}
+
+ΓÅ│ Processing background intelligence (Sending callback to temp server in a moment)...
+
+ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ ≡ƒù│∩╕Å  LLM COUNCIL VOTES ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+ΓöîΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓö¼ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓö¼ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓö¼ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓö¼ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+Γöé Agent              Γöé  Scam?   Γöé  Conf   Γöé Type             Γöé Reasoning         
+Γö£ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓö╝ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓö╝ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓö╝ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓö╝ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+Γöé LlamaScoutVoter    Γöé  ≡ƒö┤ YES  Γöé   92%   Γöé phishing_scam    Γöé The message       
+Γöé                    Γöé          Γöé         Γöé                  Γöé exhibits multiple 
+Γöé                    Γöé          Γöé         Γöé                  Γöé red flags,        
+Γöé                    Γöé          Γöé         Γöé                  Γöé including a sense 
+Γöé                    Γöé          Γöé         Γöé                  Γöé of urgency, a     
+Γöé                    Γöé          Γöé         Γöé                  Γöé suspicious link,  
+Γöé                    Γöé          Γöé         Γöé                  Γöé and a request to  
+Γöé                    Γöé          Γöé         Γöé                  Γöé contact via pΓÇª    
+Γö£ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓö╝ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓö╝ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓö╝ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓö╝ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+Γöé GptOssVoter        Γöé  ≡ƒö┤ YES  Γöé   92%   Γöé phishing_scam    Γöé Impersonates a    
+Γöé                    Γöé          Γöé         Γöé                  Γöé security alert,   
+Γöé                    Γöé          Γöé         Γöé                  Γöé creates urgency   
+Γöé                    Γöé          Γöé         Γöé                  Γöé about a           
+Γöé                    Γöé          Γöé         Γöé                  Γöé compromised       
+Γöé                    Γöé          Γöé         Γöé                  Γöé account, and      
+Γöé                    Γöé          Γöé         Γöé                  Γöé pushes the victim 
+Γöé                    Γöé          Γöé         Γöé                  Γöé to click a        
+Γöé                    Γöé          Γöé         Γöé                  Γöé malicious lΓÇª      
+Γö£ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓö╝ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓö╝ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓö╝ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓö╝ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+Γöé GroqCompoundVoter  Γöé  ≡ƒö┤ YES  Γöé   92%   Γöé phishing_scam    Γöé The message is a  
+Γöé                    Γöé          Γöé         Γöé                  Γöé scam attempt,     
+Γöé                    Γöé          Γöé         Γöé                  Γöé using urgency and 
+Γöé                    Γöé          Γöé         Γöé                  Γöé fake contact      
+Γöé                    Γöé          Γöé         Γöé                  Γöé information to    
+Γöé                    Γöé          Γöé         Γöé                  Γöé trick the user    
+Γöé                    Γöé          Γöé         Γöé                  Γöé into clicking a   
+Γöé                    Γöé          Γöé         Γöé                  Γöé malicious liΓÇª     
+Γö£ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓö╝ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓö╝ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓö╝ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓö╝ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+Γöé QwenVoter          Γöé  ≡ƒö┤ YES  Γöé   92%   Γöé phishing_link_wΓÇª Γöé Scammer uses      
+Γöé                    Γöé          Γöé         Γöé                  Γöé urgency and fake  
+Γöé                    Γöé          Γöé         Γöé                  Γöé contact details   
+Γöé                    Γöé          Γöé         Γöé                  Γöé to direct user to 
+Γöé                    Γöé          Γöé         Γöé                  Γöé phishing link.    
+Γöé                    Γöé          Γöé         Γöé                  Γöé Message lacks     
+Γöé                    Γöé          Γöé         Γöé                  Γöé context-aware     
+Γöé                    Γöé          Γöé         Γöé                  Γöé response to uΓÇª    
+ΓööΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓö┤ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓö┤ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓö┤ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓö┤ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+ΓöîΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ ≡ƒù│∩╕Å Council Votes JSON ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÉ
+Γöé {                                                                             Γöé
+Γöé   "votes": [                                                                  Γöé
+Γöé     {                                                                         Γöé
+Γöé       "agent": "LlamaScoutVoter",                                             Γöé
+Γöé       "isScam": true,                                                         Γöé
+Γöé       "confidence": 0.92,                                                     Γöé
+Γöé       "scamType": "phishing_scam",                                            Γöé
+Γöé       "reasoning": "The message exhibits multiple red flags, including a      Γöé
+Γöé sense of urgency, a suspicious link, and a request to contact via phone and   Γöé
+Γöé email. The link appears to be a phishing attempt to harvest sensitive i",     Γöé
+Γöé       "extractedIntelligence": {                                              Γöé
+Γöé         "phoneNumbers": [                                                     Γöé
+Γöé           "+91-9876543210"                                                    Γöé
+Γöé         ],                                                                    Γöé
+Γöé         "emailIds": [                                                         Γöé
+Γöé           "scammer@fakeupi"                                                   Γöé
+Γöé         ],                                                                    Γöé
+Γöé         "phishingLinks": [                                                    Γöé
+Γöé           "http://fake-bank-kyc.com"                                          Γöé
+Γöé         ],                                                                    Γöé
+Γöé         "suspiciousKeywords": [                                               Γöé
+Γöé           "URGENT",                                                           Γöé
+Γöé           "compromised",                                                      Γöé
+Γöé           "click on link"                                                     Γöé
+Γöé         ]                                                                     Γöé
+Γöé       }                                                                       Γöé
+Γöé     },                                                                        Γöé
+Γöé     {                                                                         Γöé
+Γöé       "agent": "GptOssVoter",                                                 Γöé
+Γöé       "isScam": true,                                                         Γöé
+Γöé       "confidence": 0.92,                                                     Γöé
+Γöé       "scamType": "phishing_scam",                                            Γöé
+Γöé       "reasoning": "Impersonates a security alert, creates urgency about a    Γöé
+Γöé compromised account, and pushes the victim to click a malicious link for      Γöé
+Γöé credential harvesting.",                                                      Γöé
+Γöé       "extractedIntelligence": {                                              Γöé
+Γöé         "phoneNumbers": [                                                     Γöé
+Γöé           "+91-9876543210"                                                    Γöé
+Γöé         ],                                                                    Γöé
+Γöé         "phishingLinks": [                                                    Γöé
+Γöé           "http://fake-bank-kyc.com"                                          Γöé
+Γöé         ],                                                                    Γöé
+Γöé         "suspiciousKeywords": [                                               Γöé
+Γöé           "urgent",                                                           Γöé
+Γöé           "compromised",                                                      Γöé
+Γöé           "click",                                                            Γöé
+Γöé           "link",                                                             Γöé
+Γöé           "account"                                                           Γöé
+Γöé         ]                                                                     Γöé
+Γöé       }                                                                       Γöé
+Γöé     },                                                                        Γöé
+Γöé     {                                                                         Γöé
+Γöé       "agent": "GroqCompoundVoter",                                           Γöé
+Γöé       "isScam": true,                                                         Γöé
+Γöé       "confidence": 0.92,                                                     Γöé
+Γöé       "scamType": "phishing_scam",                                            Γöé
+Γöé       "reasoning": "The message is a scam attempt, using urgency and fake     Γöé
+Γöé contact information to trick the user into clicking a malicious link.",       Γöé
+Γöé       "extractedIntelligence": {                                              Γöé
+Γöé         "suspiciousKeywords": [                                               Γöé
+Γöé           "urgent",                                                           Γöé
+Γöé           "compromised",                                                      Γöé
+Γöé           "click"                                                             Γöé
+Γöé         ],                                                                    Γöé
+Γöé         "phoneNumbers": [                                                     Γöé
+Γöé           "+91-9876543210"                                                    Γöé
+Γöé         ],                                                                    Γöé
+Γöé         "phishingLinks": [                                                    Γöé
+Γöé           "http://fake-bank-kyc.com"                                          Γöé
+Γöé         ]                                                                     Γöé
+Γöé       }                                                                       Γöé
+Γöé     },                                                                        Γöé
+Γöé     {                                                                         Γöé
+Γöé       "agent": "QwenVoter",                                                   Γöé
+Γöé       "isScam": true,                                                         Γöé
+Γöé       "confidence": 0.92,                                                     Γöé
+Γöé       "scamType": "phishing_link_with_impersonation",                         Γöé
+Γöé       "reasoning": "Scammer uses urgency and fake contact details to direct   Γöé
+Γöé user to phishing link. Message lacks context-aware response to user's case    Γöé
+Γöé ID, employs template-based 'account compromised' script with personal",       Γöé
+Γöé       "extractedIntelligence": {                                              Γöé
+Γöé         "phishingLinks": [                                                    Γöé
+Γöé           "http://fake-bank-kyc.com"                                          Γöé
+Γöé         ],                                                                    Γöé
+Γöé         "phoneNumbers": [                                                     Γöé
+Γöé           "+91-9876543210"                                                    Γöé
+Γöé         ],                                                                    Γöé
+Γöé         "suspiciousKeywords": [                                               Γöé
+Γöé           "urgent",                                                           Γöé
+Γöé           "compromised",                                                      Γöé
+Γöé           "click on link"                                                     Γöé
+Γöé         ]                                                                     Γöé
+Γöé       }                                                                       Γöé
+Γöé     }                                                                         Γöé
+Γöé   ]                                                                           Γöé
+Γöé }                                                                             Γöé
+ΓööΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÿ
+  ΓÅ▒  Council voting completed in 4.68s
+
+ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ ≡ƒÜÇ  CALLBACK DISPATCHED (HTTP 200) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+  Session ID:        f47ac10b-ee30-43a6-8b2a-07c4c7e5f6a2  
+  Msgs Exchanged:    5                                     
+
+             Extracted Intelligence              
+ΓöîΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓö¼ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÉ
+Γöé Type               Γöé Value                    Γöé
+Γö£ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓö╝ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöñ
+Γöé upiIds             Γöé scammer@fakeupi          Γöé
+Γöé phishingLinks      Γöé http://fake-bank-kyc.com Γöé
+Γöé phoneNumbers       Γöé +91-9876543210           Γöé
+Γöé suspiciousKeywords Γöé kyc                      Γöé
+Γöé suspiciousKeywords Γöé upi                      Γöé
+Γöé suspiciousKeywords Γöé link                     Γöé
+Γöé suspiciousKeywords Γöé click                    Γöé
+Γöé suspiciousKeywords Γöé urgent                   Γöé
+Γöé suspiciousKeywords Γöé compromised              Γöé
+Γöé emailAddresses     Γöé scammer@fakeupi          Γöé
+ΓööΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓö┤ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÿ
+ΓöîΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ Agent Notes ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÉ
+Γöé Phishing scam detected. Scammers used urgency tactics and impersonation,      Γöé
+Γöé requesting users to click on a malicious link for credential harvesting.      Γöé
+ΓööΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÿ
+
+ΓöîΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ Full Callback Payload ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÉ
+Γöé {                                                                             Γöé
+Γöé   "sessionId": "f47ac10b-ee30-43a6-8b2a-07c4c7e5f6a2",                        Γöé
+Γöé   "scamDetected": true,                                                       Γöé
+Γöé   "totalMessagesExchanged": 5,                                                Γöé
+Γöé   "engagementDurationSeconds": 7.26,                                          Γöé
+Γöé   "extractedIntelligence": {                                                  Γöé
+Γöé     "upiIds": [                                                               Γöé
+Γöé       "scammer@fakeupi"                                                       Γöé
+Γöé     ],                                                                        Γöé
+Γöé     "phishingLinks": [                                                        Γöé
+Γöé       "http://fake-bank-kyc.com"                                              Γöé
+Γöé     ],                                                                        Γöé
+Γöé     "phoneNumbers": [                                                         Γöé
+Γöé       "+91-9876543210"                                                        Γöé
+Γöé     ],                                                                        Γöé
+Γöé     "suspiciousKeywords": [                                                   Γöé
+Γöé       "kyc",                                                                  Γöé
+Γöé       "upi",                                                                  Γöé
+Γöé       "link",                                                                 Γöé
+Γöé       "click",                                                                Γöé
+Γöé       "urgent",                                                               Γöé
+Γöé       "compromised"                                                           Γöé
+Γöé     ],                                                                        Γöé
+Γöé     "emailAddresses": [                                                       Γöé
+Γöé       "scammer@fakeupi"                                                       Γöé
+Γöé     ]                                                                         Γöé
+Γöé   },                                                                          Γöé
+Γöé   "agentNotes": "Phishing scam detected. Scammers used urgency tactics and    Γöé
+Γöé impersonation, requesting users to click on a malicious link for credential   Γöé
+Γöé harvesting."                                                                  Γöé
+Γöé }                                                                             Γöé
+ΓööΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÿ
+  ΓÅ▒  Callback completed in 0.17s
+
+Γ£à Callback marked as sent correctly inside session.
