@@ -95,62 +95,64 @@ class ResponseGenerator:
     
 
 
-    @retry(
-        stop=stop_after_attempt(15),
-        wait=wait_exponential(multiplier=1, min=1, max=10),
-        reraise=True,
-    )
     async def _call_groq(self, messages: list) -> dict:
         """Call Groq API with robust JSON parsing."""
-        api_key = get_next_groq_key(self._preferred_api_key)
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
-        
-        payload = {
-            "model": self.model,
-            "messages": messages,
-            "temperature": 0.8, # Higher temp for creativity/human-like variation
-            "max_tokens": 300,
-            "response_format": {"type": "json_object"},
-        }
-
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers=headers,
-                json=payload,
-            )
+        for attempt in range(5):
+            api_key = get_next_groq_key(self._preferred_api_key)
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            }
             
-            if response.status_code != 200:
-                raise Exception(f"Groq API Error {response.status_code}: {response.text}")
+            payload = {
+                "model": self.model,
+                "messages": messages,
+                "temperature": 0.8, # Higher temp for creativity/human-like variation
+                "max_tokens": 300,
+                "response_format": {"type": "json_object"},
+            }
 
-            data = response.json()
-            content = data["choices"][0]["message"]["content"]
-            
-            # Robust JSON parsing
-            try:
-                # Try direct JSON parse
-                parsed = json.loads(content)
-                return parsed
-            except json.JSONDecodeError:
-                # Try cleaning markdown code blocks
-                cleaned = content.replace("```json", "").replace("```", "").strip()
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers=headers,
+                    json=payload,
+                )
+                
+                if response.status_code == 429:
+                    logger.warning(f"[ResponseGenerator] Rate Limit 429. Attempt {attempt+1}/5 with new key.")
+                    continue
+                
+                if response.status_code != 200:
+                    raise Exception(f"Groq API Error {response.status_code}: {response.text}")
+
+                data = response.json()
+                content = data["choices"][0]["message"]["content"]
+                
+                # Robust JSON parsing
                 try:
-                    parsed = json.loads(cleaned)
+                    # Try direct JSON parse
+                    parsed = json.loads(content)
                     return parsed
                 except json.JSONDecodeError:
-                    # Try extracting JSON object with regex
-                    import re
-                    match = re.search(r'\{[^{}]*\}', cleaned, re.DOTALL)
-                    if match:
-                        try:
-                            parsed = json.loads(match.group(0))
-                            return parsed
-                        except json.JSONDecodeError:
-                            pass
-                    
-                    # Last resort: return as plain text reply
-                    logger.warning(f"Failed to parse JSON from response: {content[:200]}")
-                    return {"status": "success", "reply": cleaned[:200]}
+                    # Try cleaning markdown code blocks
+                    cleaned = content.replace("```json", "").replace("```", "").strip()
+                    try:
+                        parsed = json.loads(cleaned)
+                        return parsed
+                    except json.JSONDecodeError:
+                        # Try extracting JSON object with regex
+                        import re
+                        match = re.search(r'\{[^{}]*\}', cleaned, re.DOTALL)
+                        if match:
+                            try:
+                                parsed = json.loads(match.group(0))
+                                return parsed
+                            except json.JSONDecodeError:
+                                pass
+                        
+                        # Last resort: return as plain text reply
+                        logger.warning(f"Failed to parse JSON from response: {content[:200]}")
+                        return {"status": "success", "reply": cleaned[:200]}
+        
+        raise Exception("[ResponseGenerator] Exhausted all API retries due to rate limits.")

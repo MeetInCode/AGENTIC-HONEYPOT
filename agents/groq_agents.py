@@ -85,53 +85,61 @@ class GroqVoter:
 
     async def _call_groq(self, prompt: str) -> Optional[Dict[str, Any]]:
         """Call Groq API — no retries; council handles failures gracefully."""
-        api_key = get_next_groq_key(self._preferred_api_key)
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        }
+        for attempt in range(5):
+            api_key = get_next_groq_key(self._preferred_api_key)
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            }
+            
+            payload = {
+                "model": self.model,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.1,
+                "max_tokens": 1024,
+            }
+            
+            # Only add response_format if we are sure (Llama 3.3 / Scout)
+            if "llama-3" in self.model or "scout" in self.model:
+                 payload["response_format"] = {"type": "json_object"}
+
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers=headers,
+                    json=payload,
+                )
+                
+                if response.status_code == 429:
+                    logger.warning(f"[{self.__class__.__name__}] Rate Limit 429. Attempt {attempt+1}/5 with new key.")
+                    continue
+
+                if response.status_code != 200:
+                    raise Exception(f"Groq API Error {response.status_code}: {response.text}")
+
+                data = response.json()
+                content = data["choices"][0]["message"]["content"]
+                
+                # Robust Parsing
+                content = content.replace("```json", "").replace("```", "").strip()
+                
+                # Find JSON object
+                match = re.search(r'(\{.*\})', content, re.DOTALL)
+                if match:
+                    content = match.group(1)
+                
+                # Clean control characters (often cause JSONDecodeError)
+                content = "".join([c for c in content if ord(c) >= 32 or c in '\n\r\t'])
+
+                try:
+                    return json.loads(content)
+                except json.JSONDecodeError as e:
+                    logger.error(f"JSON Parse Error: {e}. Content: {content[:100]}...")
+                    return None
         
-        payload = {
-            "model": self.model,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.1,
-            "max_tokens": 1024,
-        }
-        
-        # Only add response_format if we are sure (Llama 3.3 / Scout)
-        if "llama-3" in self.model or "scout" in self.model:
-             payload["response_format"] = {"type": "json_object"}
-
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers=headers,
-                json=payload,
-            )
-            
-            if response.status_code != 200:
-                raise Exception(f"Groq API Error {response.status_code}: {response.text}")
-
-            data = response.json()
-            content = data["choices"][0]["message"]["content"]
-            
-            # Robust Parsing
-            content = content.replace("```json", "").replace("```", "").strip()
-            
-            # Find JSON object
-            match = re.search(r'(\{.*\})', content, re.DOTALL)
-            if match:
-                content = match.group(1)
-            
-            # Clean control characters (often cause JSONDecodeError)
-            content = "".join([c for c in content if ord(c) >= 32 or c in '\n\r\t'])
-
-            try:
-                return json.loads(content)
-            except json.JSONDecodeError as e:
-                logger.error(f"JSON Parse Error: {e}. Content: {content[:100]}...")
-                return None
+        logger.error(f"[{self.__class__.__name__}] Exhausted all API retries due to rate limits.")
+        return None
 
 
 class GptOssVoter(GroqVoter):
@@ -214,46 +222,54 @@ class GroqCompoundVoter(GroqVoter):
 
     async def _call_groq(self, prompt: str) -> Optional[Dict[str, Any]]:
         """Call Groq API with compound_custom parameter."""
-        api_key = get_next_groq_key(self._preferred_api_key)
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        }
-        
-        payload = {
-            "model": self.model,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.73,
-            "max_completion_tokens": 1024,
-            "top_p": 1,
-            "stop": None,
-            "compound_custom": {"tools": {"enabled_tools": []}}
-        }
-
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers=headers,
-                json=payload,
-            )
+        for attempt in range(5):
+            api_key = get_next_groq_key(self._preferred_api_key)
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            }
             
-            if response.status_code != 200:
-                raise Exception(f"Groq API Error {response.status_code}: {response.text}")
+            payload = {
+                "model": self.model,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.73,
+                "max_completion_tokens": 1024,
+                "top_p": 1,
+                "stop": None,
+                "compound_custom": {"tools": {"enabled_tools": []}}
+            }
 
-            data = response.json()
-            content = data["choices"][0]["message"]["content"]
-            
-            # Robust Parsing
-            content = content.replace("```json", "").replace("```", "").strip()
-            # Clean control characters
-            content = "".join([c for c in content if ord(c) >= 32 or c in '\n\r\t'])
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers=headers,
+                    json=payload,
+                )
+                
+                if response.status_code == 429:
+                    logger.warning(f"[{self.__class__.__name__}] Rate Limit 429. Attempt {attempt+1}/5 with new key.")
+                    continue
 
-            try:
-                return json.loads(content)
-            except json.JSONDecodeError as e:
-                logger.error(f"JSON Parse Error: {e}. Content: {content[:100]}...")
-                return None
+                if response.status_code != 200:
+                    raise Exception(f"Groq API Error {response.status_code}: {response.text}")
+
+                data = response.json()
+                content = data["choices"][0]["message"]["content"]
+                
+                # Robust Parsing
+                content = content.replace("```json", "").replace("```", "").strip()
+                # Clean control characters
+                content = "".join([c for c in content if ord(c) >= 32 or c in '\n\r\t'])
+
+                try:
+                    return json.loads(content)
+                except json.JSONDecodeError as e:
+                    logger.error(f"JSON Parse Error: {e}. Content: {content[:100]}...")
+                    return None
+
+        logger.error(f"[{self.__class__.__name__}] Exhausted all API retries due to rate limits.")
+        return None
 
 
 class QwenVoter(GroqVoter):
@@ -274,39 +290,47 @@ class QwenVoter(GroqVoter):
 
     async def _call_groq(self, prompt: str) -> Optional[Dict[str, Any]]:
         """Call Groq API with response_format json_object."""
-        api_key = get_next_groq_key(self._preferred_api_key)
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        }
-        
-        payload = {
-            "model": self.model,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.6,
-            "max_completion_tokens": 4096,
-            "top_p": 0.95,
-            "reasoning_effort": "default",  # As requested, though might be model specific
-            "response_format": {"type": "json_object"},
-            "stop": None
-        }
-
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers=headers,
-                json=payload,
-            )
+        for attempt in range(5):
+            api_key = get_next_groq_key(self._preferred_api_key)
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            }
             
-            if response.status_code != 200:
-                raise Exception(f"Groq API Error {response.status_code}: {response.text}")
+            payload = {
+                "model": self.model,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.6,
+                "max_completion_tokens": 4096,
+                "top_p": 0.95,
+                "reasoning_effort": "default",  # As requested, though might be model specific
+                "response_format": {"type": "json_object"},
+                "stop": None
+            }
 
-            data = response.json()
-            content = data["choices"][0]["message"]["content"]
-            
-            try:
-                return json.loads(content)
-            except json.JSONDecodeError as e:
-                logger.error(f"JSON Parse Error: {e}. Content: {content[:100]}...")
-                return None
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers=headers,
+                    json=payload,
+                )
+                
+                if response.status_code == 429:
+                    logger.warning(f"[{self.__class__.__name__}] Rate Limit 429. Attempt {attempt+1}/5 with new key.")
+                    continue
+
+                if response.status_code != 200:
+                    raise Exception(f"Groq API Error {response.status_code}: {response.text}")
+
+                data = response.json()
+                content = data["choices"][0]["message"]["content"]
+                
+                try:
+                    return json.loads(content)
+                except json.JSONDecodeError as e:
+                    logger.error(f"JSON Parse Error: {e}. Content: {content[:100]}...")
+                    return None
+
+        logger.error(f"[{self.__class__.__name__}] Exhausted all API retries due to rate limits.")
+        return None

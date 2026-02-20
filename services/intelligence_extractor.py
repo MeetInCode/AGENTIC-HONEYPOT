@@ -188,23 +188,33 @@ class IntelligenceExtractor:
             )
 
             # Rotate Groq API key and get pooled client for extraction calls.
-            api_key = get_next_groq_key(self._preferred_api_key)
-            client = get_groq_client(api_key)
+            for attempt in range(5):
+                api_key = get_next_groq_key(self._preferred_api_key)
+                client = get_groq_client(api_key)
 
-            response = await client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": LLM_EXTRACTION_SYSTEM},
-                    {"role": "user", "content": LLM_EXTRACTION_PROMPT.format(messages=msg_text)},
-                ],
-                temperature=0.1,
-                # Extraction JSON is compact; keep token limit modest for speed.
-                max_tokens=400,
-                response_format={"type": "json_object"},
-            )
+                try:
+                    response = await client.chat.completions.create(
+                        model=self.model,
+                        messages=[
+                            {"role": "system", "content": LLM_EXTRACTION_SYSTEM},
+                            {"role": "user", "content": LLM_EXTRACTION_PROMPT.format(messages=msg_text)},
+                        ],
+                        temperature=0.1,
+                        # Extraction JSON is compact; keep token limit modest for speed.
+                        max_tokens=400,
+                        response_format={"type": "json_object"},
+                    )
 
-            content = response.choices[0].message.content.strip()
-            return json.loads(content)
+                    content = response.choices[0].message.content.strip()
+                    return json.loads(content)
+                except Exception as e:
+                    if "429" in str(e) or "Rate limit" in str(e) or "rate_limit" in str(e):
+                        logger.warning(f"[IntelligenceExtractor] Rate Limit 429. Attempt {attempt+1}/5 with new key.")
+                        continue
+                    raise e
+                    
+            logger.error("[IntelligenceExtractor] Exhausted all API retries due to rate limits.")
+            return {}
 
         except Exception as e:
             logger.warning(f"LLM extraction failed: {e}")

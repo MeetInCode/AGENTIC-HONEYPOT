@@ -14,7 +14,7 @@ payload = {
   "sessionId": "demo-session-all-intel-001",
   "message": {
     "sender": "scammer",
-    "text": "URGENT: Your SBI account ending 1234 has been blocked due to suspicious UPI activity. Call us on +91-9876543210 or verify now at http://fake-bank-kyc.com using case ID CASE-REF-2026-001.",
+    "text": "hello how are you?? can u send some money???",
     "timestamp": "2025-02-11T10:30:00Z"
   },
   "conversationHistory": [

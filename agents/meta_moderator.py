@@ -236,48 +236,47 @@ class JudgeAgent:
             "agentNotes": notes,
         }
 
-    @retry(
-        stop=stop_after_attempt(15),
-        wait=wait_exponential(multiplier=1, min=1, max=10),
-        reraise=True,
-    )
     async def _call_groq(self, prompt: str) -> Dict[str, Any]:
-        """Call Groq API (Llama 3.1 8b Instant) for aggregation."""
-        api_key = get_next_groq_key(self.api_key)
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
-        
-        payload = {
-            "model": self.model,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.1,
-            "max_tokens": 1024,
-            "response_format": {"type": "json_object"}
-        }
+        """Call Groq API (Llama 3.3 70b) for aggregation."""
+        for attempt in range(5):
+            api_key = get_next_groq_key(self.api_key)
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            }
+            
+            payload = {
+                "model": self.model,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.1,
+                "max_tokens": 1024,
+                "response_format": {"type": "json_object"}
+            }
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers=headers,
-                json=payload,
-            )
-            
-            if response.status_code != 200:
-                raise Exception(f"Groq API Error {response.status_code}: {response.text}")
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers=headers,
+                    json=payload,
+                )
+                
+                if response.status_code == 429:
+                    logger.warning(f"[JudgeAgent] Rate Limit 429. Attempt {attempt+1}/5 with new key.")
+                    continue
+                
+                if response.status_code != 200:
+                    raise Exception(f"Groq API Error {response.status_code}: {response.text}")
 
-            data = response.json()
-            content = data["choices"][0]["message"]["content"]
-            
-            # Robust Parsing
-            content = content.replace("```json", "").replace("```", "").strip()
-            # Regex to find JSON block
-            match = re.search(r'(\{.*\})', content, re.DOTALL)
-            if match:
-                content = match.group(1)
-            else:
-                # If regex fails, try parsing the whole content
-                pass
-            
-            return json.loads(content)
+                data = response.json()
+                content = data["choices"][0]["message"]["content"]
+                
+                # Robust Parsing
+                content = content.replace("```json", "").replace("```", "").strip()
+                # Regex to find JSON block
+                match = re.search(r'(\{.*\})', content, re.DOTALL)
+                if match:
+                    content = match.group(1)
+                
+                return json.loads(content)
+                
+        raise Exception("[JudgeAgent] Exhausted all API retries due to rate limits.")

@@ -27,7 +27,7 @@ from config.settings import get_settings
 _groq_lock = threading.Lock()
 _nvidia_lock = threading.Lock()
 
-_groq_cycle: Optional[Iterable[str]] = None
+_groq_keys_list: Optional[List[str]] = None
 _nvidia_cycle: Optional[Iterable[str]] = None
 
 # Client pools: key -> AsyncGroq client instance
@@ -48,7 +48,7 @@ def _parse_keys(raw: str) -> List[str]:
 
 
 def _init_groq_cycle() -> None:
-    global _groq_cycle
+    global _groq_keys_list
     settings = get_settings()
     keys = _parse_keys(settings.groq_api_keys_raw)
 
@@ -57,10 +57,10 @@ def _init_groq_cycle() -> None:
         keys = _parse_keys(settings.groq_api_key)
 
     if keys:
-        random.shuffle(keys)  # Randomize to prevent workers from locking onto the same key order
-        _groq_cycle = itertools.cycle(keys)
-        _logger.info(f"Groq round-robin pool initialised with {len(keys)} key(s)")
+        _groq_keys_list = keys
+        _logger.info(f"Groq random pool initialised with {len(keys)} key(s)")
     else:
+        _groq_keys_list = []
         _logger.warning("No Groq key pool found — using single key fallback")
 
 
@@ -81,22 +81,22 @@ def _init_nvidia_cycle() -> None:
 
 
 def get_next_groq_key(preferred_fallback: Optional[str] = None) -> str:
-    """Return the next Groq API key, using round‑robin if configured.
+    """Return a random Groq API key from the pool.
 
     Order of precedence:
-      1. GROQ_API_KEYS pool (round‑robin)
+      1. GROQ_API_KEYS pool (random selection)
       2. `preferred_fallback` passed by the caller (e.g. per‑agent key)
       3. Shared `GROQ_API_KEY` from settings
     """
-    global _groq_cycle
+    global _groq_keys_list
 
     # Lazy‑initialise the pool on first use
-    if _groq_cycle is None:
+    if _groq_keys_list is None:
         _init_groq_cycle()
 
-    if _groq_cycle is not None:
+    if _groq_keys_list:
         with _groq_lock:
-            return next(_groq_cycle)
+            return random.choice(_groq_keys_list)
 
     settings = get_settings()
     if preferred_fallback:

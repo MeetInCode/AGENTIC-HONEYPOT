@@ -26,7 +26,7 @@ from api.honeypot import router as honeypot_router
 
 settings = get_settings()
 logging.basicConfig(
-    level=getattr(logging, settings.log_level.upper(), logging.INFO),
+    level=logging.WARNING,
     format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
     datefmt="%H:%M:%S",
 )
@@ -114,25 +114,22 @@ app.include_router(honeypot_router)
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", settings.port))
     
-    # IMPORTANT: Always use 1 Uvicorn process.
-    # Concurrency is handled by the async WorkerPool (4 slots) inside the
-    # single event loop.  Multiple Uvicorn processes would each get their
-    # own isolated WorkerPool, breaking session tracking, abort, and the
-    # 3-second council delay logic.
+    # Running with 4 processes as requested for production deployment.
+    # Note: In-memory SessionManager state will be isolated per worker.
     if settings.debug:
         uvicorn.run(
             "main:app",
             host="0.0.0.0",
             port=port,
             reload=True,
-            log_level=settings.log_level.lower(),
+            log_level="warning",
         )
     else:
         uvicorn.run(
             "main:app",
             host="0.0.0.0",
             port=port,
-            workers=1,  # Single process — WorkerPool handles concurrency
-            log_level=settings.log_level.lower(),
-            access_log=True,
+            workers=4,  # 4 worker processes handled by uvicorn
+            log_level="warning",
+            access_log=False,
         )

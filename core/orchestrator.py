@@ -346,27 +346,5 @@ class HoneypotOrchestrator:
                     clean.append(str(p))
             intel["phoneNumbers"] = sorted(set(clean))
 
-        # suspiciousKeywords: max 7, lowercase deduplicated, empty if not scam
-        if "suspiciousKeywords" in intel:
-            if not is_scam:
-                intel["suspiciousKeywords"] = []
-            else:
-                seen = set()
-                unique = []
-                kws = sorted(intel["suspiciousKeywords"], key=len)
-                for kw in kws:
-                    kw_lower = kw.strip().lower()
-                    if not kw_lower:
-                        continue
-                    is_dup = False
-                    for s in seen:
-                        if s in kw_lower:
-                            is_dup = True
-                            break
-                    if not is_dup:
-                        seen.add(kw_lower)
-                        unique.append(kw_lower)
-                intel["suspiciousKeywords"] = unique[:7]
-
         payload["extractedIntelligence"] = intel
         return payload
