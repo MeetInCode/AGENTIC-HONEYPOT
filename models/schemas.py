@@ -47,6 +47,8 @@ class AgentOutput(BaseModel):
     engagementDurationSeconds: Optional[float] = 0.0
     extractedIntelligence: ExtractedIntelligence
     agentNotes: str
+    scamType: Optional[str] = "unknown"
+    confidenceLevel: Optional[float] = 0.0
 
 class CouncilVote(BaseModel):
     """Internal representation of a single agent's vote."""
@@ -101,3 +103,5 @@ class CallbackPayload(BaseModel):
     engagementDurationSeconds: Optional[float] = None
     extractedIntelligence: ExtractedIntelligence
     agentNotes: str
+    scamType: Optional[str] = None
+    confidenceLevel: Optional[float] = None

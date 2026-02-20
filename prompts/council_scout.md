@@ -75,10 +75,14 @@ Confidence levels:
 ## ENTITY EXTRACTION
 
 **CRITICAL: NEVER fabricate data. Only extract items that appear VERBATIM in the conversation MESSAGES.**
-- **UPI IDs**: Must contain @ symbol. Only if explicitly in message text.
-- **Phishing Links**: Must be actual URLs starting with http:// or https:// with NO SPACES. Do NOT include "Click here", "claim your prize", or "(implied)".
-- **Phone Numbers**: Indian format (10 digits or +91XXXXXXXXXX) only.
-- **Bank Accounts**: Actual account numbers (digits only, e.g. "1234567890"). Not masked like "XXXXXXX1234" or descriptions.
+- **Phone Numbers**: Any phone numbers shared by scammer
+- **Bank Accounts**: Any bank account numbers mentioned
+- **UPI IDs**: Any UPI IDs provided
+- **Phishing Links**: Any suspicious URLs shared
+- **Email Addresses**: Any email addresses shared
+- **Case IDs**: Any case/reference IDs mentioned
+- **Policy Numbers**: Any policy numbers shared
+- **Order Numbers**: Any order IDs mentioned
 - **Suspicious Keywords**: Max 5-7 unique keywords. No near-duplicates (keep shortest form). If scamDetected is false, return [] empty array.
 
 ## DIFFERENTIATION STRATEGIES (True vs False Positive)
@@ -126,9 +130,7 @@ Return ONLY valid JSON. No markdown, no explanations.
   "notes": "Concise 2-3 line summary of the scammer's specific technique, scripted patterns, and anomalies detected."
 }}
 
-**CRITICAL RULE FOR INTELLIGENCE:** ONLY include keys in `extractedIntelligence` if they contain values. DO NOT send empty arrays like `"bankAccounts": []` or `"phishingLinks": []`. Omit the key entirely if the intelligence is not found.,
-  "notes": "Concise 2-3 line summary of the scammer's specific technique, scripted patterns, and anomalies detected."
-}}
+**CRITICAL RULE FOR INTELLIGENCE:** ONLY include keys in `extractedIntelligence` if they contain values. DO NOT send empty arrays like `"bankAccounts": []` or `"phishingLinks": []`. Omit the key entirely if the intelligence is not found.
 
 ## INPUT DATA
 

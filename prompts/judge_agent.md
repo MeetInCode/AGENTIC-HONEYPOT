@@ -8,14 +8,14 @@ You are producing the FINAL ASSESSMENT from agent reports for a honeypot system.
 2. **totalMessagesExchanged**: {total_msg_count}
 3. **extractedIntelligence**: Merge from all agents with STRICT rules:
    - **NEVER fabricate data.** Only include items that appear VERBATIM in the original conversation MESSAGES (not from agent analysis).
-   - **bankAccounts**: Only actual account numbers (digits only, e.g. "1234567890"). Do NOT include masked versions like "XXXXXXX1234" or descriptions like "ending in 1234".
-   - **upiIds**: Must contain @ (e.g. user@ybl). Exclude anything without @.
-   - **phishingLinks**: Must start with http:// or https://. Do NOT include text like "Click here" or "claim your prize".
-   - **phoneNumbers**: Indian format only (10 digits or +91XXXXXXXXXX).
-   - **emailAddresses**: Any email addresses associated with the scam.
-   - **caseIds**: Any case/reference IDs mentioned by the scammer.
-   - **policyNumbers**: Any policy numbers cited.
-   - **orderNumbers**: Any order/transaction IDs.
+   - **Phone Numbers**: Any phone numbers shared by scammer
+- **Bank Accounts**: Any bank account numbers mentioned
+- **UPI IDs**: Any UPI IDs provided
+- **Phishing Links**: Any suspicious URLs shared
+- **Email Addresses**: Any email addresses shared
+- **Case IDs**: Any case/reference IDs mentioned
+- **Policy Numbers**: Any policy numbers shared
+- **Order Numbers**: Any order IDs mentioned
    - **suspiciousKeywords**: Max 5-7 unique keywords. Remove near-duplicates (keep shortest form).
    - **If scamDetected is false**: set suspiciousKeywords to [] (empty array).
 6. **agentNotes**: Concise 2-3 line professional summary of the scammer's specific technique, psychological tactics, and key patterns. Do not mention internal processes.
@@ -68,15 +68,48 @@ Before finalizing the verdict, you must evaluate the **CONTEXTUAL ORIGIN** of th
 {{
   "sessionId": "{session_id}",
   "scamDetected": true,
-  "totalMessagesExchanged": {total_msg_count},
-  "engagementDurationSeconds": 120.0,
+  "totalMessagesExchanged": 14,
+  "engagementDurationSeconds": 210,
   "extractedIntelligence": {{
-    "upiIds": ["example@ybl"],
-    "suspiciousKeywords": ["urgent", "verify"]
+    "phoneNumbers": [
+      "+91-9876543210",
+      "+91-8765432109"
+    ],
+    "bankAccounts": [
+      "1234567890123456",
+      "6543210098765432"
+    ],
+    "upiIds": [
+      "scammer.fraud@fakebank",
+      "cashback.scam@fakeupi"
+    ],
+    "phishingLinks": [
+      "http://malicious-site.com",
+      "http://amaz0n-deals.fake-site.com/claim?id=12345",
+      "http://fake-bank-kyc.com"
+    ],
+    "emailAddresses": [
+      "scammer@fake.com",
+      "offers@fake-amazon-deals.com"
+    ],
+    "caseIds": [
+      "CASE-REF-00921",
+      "TKT-FAKE-4471"
+    ],
+    "policyNumbers": [
+      "POLICY-ULIP-778899",
+      "INS-FRAUD-554433"
+    ],
+    "orderNumbers": [
+      "ORDER-FAKE-2026-00123",
+      "AMZ-DEL-99887766"
+    ]
   }},
+  "agentNotes": "Scammer claimed to be from SBI fraud department, shared fake case ID, policy and order details, and repeatedly pushed a KYC verification link and cashback UPI handle.",
+  "scamType": "bank_fraud_upi_phishing_combo",
+  "confidenceLevel": 0.96
+}},
   "agentNotes": "Payment fraud detected. Scammer used urgency tactics requesting UPI transfer. Extracted UPI ID and suspicious keywords."
 }}
 
-**CRITICAL RULE FOR INTELLIGENCE:** ONLY include keys in `extractedIntelligence` if they contain values. DO NOT include empty arrays like `"bankAccounts": []` or `"phishingLinks": []`. If no keywords are found, omit `"suspiciousKeywords"` entirely instead of sending an empty array.,
-  "agentNotes": "Payment fraud detected. Scammer used urgency tactics requesting UPI transfer. Extracted UPI ID and suspicious keywords."
-}}
+**CRITICAL RULE FOR INTELLIGENCE:** ONLY include keys in `extractedIntelligence` if they contain values. DO NOT include empty arrays like `"bankAccounts": []` or `"phishingLinks": []`. If no keywords are found, omit `"suspiciousKeywords"` entirely instead of sending an empty array.

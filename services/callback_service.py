@@ -94,6 +94,12 @@ class CallbackService:
             # Use judge's scam detection value, or fallback to session state
             is_scam = payload_dict.get("scamDetected", session.is_scam_detected)
             
+            # Map extra evaluation metrics
+            if "scamType" not in payload_dict and session.scam_type != "unknown":
+                 payload_dict["scamType"] = session.scam_type
+            if "confidenceLevel" not in payload_dict:
+                 payload_dict["confidenceLevel"] = session.scam_confidence
+            
             # Strict filtering for extractedIntelligence - allow new evaluation fields
             if "extractedIntelligence" in payload_dict:
                 raw_intel = payload_dict["extractedIntelligence"]
@@ -130,6 +136,8 @@ class CallbackService:
                 "engagementDurationSeconds": round(duration, 2),
                 "extractedIntelligence": filtered_intel,
                 "agentNotes": verdict.reasoning if verdict else "No verdict available",
+                "scamType": session.scam_type if session.scam_type != "unknown" else "unknown",
+                "confidenceLevel": session.scam_confidence
             }
         
         # Log before sending
@@ -147,6 +155,8 @@ class CallbackService:
                     engagementDurationSeconds=float(payload_dict.get("engagementDurationSeconds", round(duration, 2))),
                     extractedIntelligence=ExtractedIntelligence(**filtered_intel) if 'filtered_intel' in locals() else ExtractedIntelligence(),
                     agentNotes=str(payload_dict.get("agentNotes", "Payload validation fallback")),
+                    scamType=str(payload_dict.get("scamType", "unknown")),
+                    confidenceLevel=float(payload_dict.get("confidenceLevel", 0.0)),
                 )
             except Exception as e2:
                 logger.error(f"Fallback payload construction also failed: {e2}")

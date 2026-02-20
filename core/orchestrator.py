@@ -180,36 +180,10 @@ class HoneypotOrchestrator:
             if not session or session.callback_sent:
                 return
 
-            # ── COUNCIL DELAY LOGIC ──
-            if conversation_history_count == 0:
-                # Empty conversation history: wait before sending to council
-                logger.info(
-                    f"⏳ Session {session_id}: No conversation history — "
-                    f"waiting {self.council_delay}s before council..."
-                )
-                try:
-                    # Wait for cancel_event OR timeout (whichever comes first)
-                    await asyncio.wait_for(
-                        cancel_event.wait(), timeout=self.council_delay
-                    )
-                    # If we get here, cancel_event was set → abort
-                    logger.info(
-                        f"🚫 Session {session_id}: Cancelled during delay — "
-                        f"new request superseded this one"
-                    )
-                    return
-                except asyncio.TimeoutError:
-                    # Timeout expired, no cancellation → proceed to council
-                    logger.info(
-                        f"✅ Session {session_id}: {self.council_delay}s elapsed — "
-                        f"proceeding to council"
-                    )
-            else:
-                # Has conversation history: send to council immediately
-                logger.info(
-                    f"⚡ Session {session_id}: Has conversation history "
-                    f"({conversation_history_count} msgs) — sending to council immediately"
-                )
+            # Delay removed per user request: proceed to council immediately.
+            logger.info(
+                f"⚡ Session {session_id}: Processing intelligence immediately (no delay)"
+            )
 
             # ── Check cancellation before council ──
             if cancel_event and cancel_event.is_set():

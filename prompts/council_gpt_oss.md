@@ -88,10 +88,14 @@ Confidence scale:
 
 **CRITICAL: NEVER fabricate data. Only extract items that appear VERBATIM in the original conversation MESSAGES.**
 
-- **UPI IDs**: Must contain @ (e.g. user@ybl). Only if explicitly in the message text.
-- **Phishing Links**: Must be an actual URL starting with http:// or https:// with NO SPACES. Do NOT include text like "Click here" or "claim your prize" or "(implied)".
-- **Phone Numbers**: Indian format (10 digits or +91XXXXXXXXXX). Only actual numbers from the message.
-- **Bank Accounts**: Only actual account numbers (digits only, e.g. "1234567890"). Do NOT include masked versions like "XXXXXXX1234" or descriptions like "ending in 1234".
+- **Phone Numbers**: Any phone numbers shared by scammer
+- **Bank Accounts**: Any bank account numbers mentioned
+- **UPI IDs**: Any UPI IDs provided
+- **Phishing Links**: Any suspicious URLs shared
+- **Email Addresses**: Any email addresses shared
+- **Case IDs**: Any case/reference IDs mentioned
+- **Policy Numbers**: Any policy numbers shared
+- **Order Numbers**: Any order IDs mentioned
 - **Suspicious Keywords**: Max 5-7 unique, short keywords. No near-duplicates (keep shortest form). If scamDetected is false, return [] empty array.
 
 ## DIFFERENTIATION STRATEGIES (True vs False Positive)

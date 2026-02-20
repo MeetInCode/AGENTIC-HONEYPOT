@@ -11,35 +11,53 @@ from config.settings import get_settings
 logging.basicConfig(level=logging.WARNING, format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s")
 
 payload = {
-  "sessionId": "uuid-v4-string",
+  "sessionId": "demo-session-all-intel-001",
   "message": {
     "sender": "scammer",
-    "text": "URGENT: Your account has been compromised. my phone number is +91-9876543210 and my email is scammer@fakeupi , please click on link http://fake-bank-kyc.com",
+    "text": "URGENT: Your SBI account ending 1234 has been blocked due to suspicious UPI activity. Call us on +91-9876543210 or verify now at http://fake-bank-kyc.com using case ID CASE-REF-2026-001.",
     "timestamp": "2025-02-11T10:30:00Z"
   },
   "conversationHistory": [
     {
       "sender": "scammer",
-      "text": "Previous message...",
-      "timestamp": 1700000000000
+      "text": "Dear customer, this is SBI Security Team. We noticed multiple failed login attempts on your net banking linked to card 1234-5678-9012-3456 and policy number POLICY-FAKE-445566.",
+      "timestamp": 1739265600000
     },
     {
       "sender": "user",
-      "text": "Your previous response...",
-      "timestamp": 1700000005000
+      "text": "What exactly happened and how do I fix this?",
+      "timestamp": 1739265660000
+    },
+    {
+      "sender": "scammer",
+      "text": "To avoid permanent block, pay a small verification fee via UPI to scammer.fraud@fakebank and share the OTP you receive on your registered email scammer@fake.com.",
+      "timestamp": 1739265720000
     },
     {
       "sender": "user",
-      "text": "your case id is CS-12334444",
-      "timestamp": 1700000008000
+      "text": "Why do I need to pay any fee? SBI never asks this on SMS.",
+      "timestamp": 1739265780000
+    },
+    {
+      "sender": "scammer",
+      "text": "This is a special security audit linked to order ORDER-FAKE-2026-0001 for your recent online purchase. Confirm your bank account 1234567890123456 and policy number ULIP-FAKE-991122 under ticket TICKET-FAKE-7788.",
+      "timestamp": 1739265840000
+    },
+    {
+      "sender": "user",
+      "text": "If this is official, why are you asking for full account and policy details on SMS instead of the SBI app?",
+      "timestamp": 1739265900000
     }
   ],
   "metadata": {
     "channel": "SMS",
     "language": "English",
-    "locale": "IN"
+    "locale": "IN",
+    "scenarioType": "bank_fraud_upi_phishing_combo",
+    "testCaseId": "SCENARIO-ALL-INTEL-001"
   }
 }
+
 
 async def run_test():
     # Override callback URL to point to our temp server
